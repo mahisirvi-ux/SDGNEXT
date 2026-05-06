@@ -1,0 +1,22 @@
+/* Hide all view sections by default */
+.view-section { 
+    display: none; 
+}
+
+/* Show the active view with a smooth slide-up fade */
+.view-section.active { 
+    display: block; 
+    animation: fadeIn 0.4s ease-in-out; 
+}
+
+/* Keyframes for the view transition */
+@keyframes fadeIn { 
+    from { 
+        opacity: 0; 
+        transform: translateY(10px); 
+    } 
+    to { 
+        opacity: 1; 
+        transform: translateY(0); 
+    } 
+}
