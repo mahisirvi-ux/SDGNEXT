@@ -15,7 +15,7 @@ SMTP_SERVER = "smtp.gmail.com"
 SMTP_PORT = 587
 SMTP_USERNAME = "mahi.sirvi@gmail.com"
 SMTP_PASSWORD = "klrynpcgevlubkfj" 
-RECIPIENTS = ["mahi.sirvi@gmail.com", "rahulnikam5050@gmail.com"]
+RECIPIENTS = ["mahi.sirvi@gmail.com", "gautampatidar15501@gmail.com"]
 
 def generate_and_send_daily_summary():
     """Queries the database and sends the daily executive summary."""
