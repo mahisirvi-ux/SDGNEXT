@@ -1,4 +1,5 @@
 import os
+import boto3
 from dotenv import load_dotenv
 import boto3
 from botocore.exceptions import ClientError
@@ -47,6 +48,9 @@ def generate_blocker_summary(touchpoint_name: str, team_name: str, history_logs:
     if not history_logs:
         return "No historical context available. Please review initial requirements."
 
+    if not client:
+        return "Please review the detailed logs below for the latest status. (AI Agent offline)"
+
     timeline_text = ""
     for log in history_logs:
         date_str = log.created_at.strftime("%b %d") if log.created_at else "Unknown"
@@ -69,7 +73,7 @@ def generate_blocker_summary(touchpoint_name: str, team_name: str, history_logs:
     try:
         return _invoke_bedrock(system_prompt, user_prompt, temperature=0.3)
     except Exception as e:
-        print(f"AI Agent Summarization Failed: {e}")
+        print(f"AI Agent Summarization Failed via Bedrock: {e}")
         return "Please review the detailed logs below for the latest status."
 
 
@@ -100,7 +104,7 @@ def generate_stakeholder_intro(team_name: str, team_items: list) -> str:
     try:
         return _invoke_bedrock(system_prompt, user_prompt, temperature=0.4)
     except Exception as e:
-        print(f"Executive Summary Generation Failed: {e}")
+        print(f"Executive Summary Generation Failed via Bedrock: {e}")
         return f"<p>Please review the {len(team_items)} pending items below requiring your sign-off to unblock the current project phase.</p>"
 
 
@@ -129,5 +133,5 @@ def generate_project_mom(project_data: str) -> str:
     try:
         return _invoke_bedrock(system_prompt, user_prompt, temperature=0.3)
     except Exception as e:
-        print(f"MOM Generation Failed: {e}")
+        print(f"MOM Generation Failed via Bedrock: {e}")
         return "<p>Error generating MOM. Please review the dashboard manually.</p>"

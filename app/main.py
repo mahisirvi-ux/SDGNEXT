@@ -12,7 +12,12 @@ from app.core.mom_engine import generate_and_send_mom
 # Import our new architecture
 from app.api.routes import upload, projects, tasks
 from app.core.email_engine import generate_and_send_daily_summary, generate_and_send_follow_ups
+import mimetypes
+
+# Force Windows/Python to recognize .js files correctly
+mimetypes.add_type('application/javascript', '.js')
 # 1. Auto-create database tables if they don't exist
+
 Base.metadata.create_all(bind=engine)
 scheduler = BackgroundScheduler()
 
