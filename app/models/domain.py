@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text,Boolean, ForeignKey, TIMESTAMP
+from sqlalchemy import Column, Integer, String, Text, Date, JSON, Boolean, ForeignKey, TIMESTAMP
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from app.core.database import Base
@@ -69,3 +69,28 @@ class TeamMaster(Base):
     team_name = Column(String, unique=True, index=True, nullable=False)
     contact_email = Column(String, nullable=False)
     is_active = Column(Boolean, default=True)
+
+class IDRTechnical(Base):
+    """Phase 2: Technical Integration Requirements"""
+    __tablename__ = "idr_technical"
+
+    id = Column(Integer, primary_key=True, index=True)
+    touchpoint_id = Column(Integer, ForeignKey("integration_touchpoints.id"))
+    
+    # Workflow & Tracking
+    tech_status = Column(String, default="Pending Workshop") 
+    pending_with = Column(String) 
+    
+    # NEW: Project Management Tracking columns
+    source_system = Column(String, nullable=True)
+    start_date = Column(Date, nullable=True)
+    end_date = Column(Date, nullable=True)
+    
+    # Integration Approach (This will start as Null/Unassigned)
+    integration_type = Column(String, nullable=True) # "API", "Database", "Batch"
+    
+    # Dynamic Payload (Stores the specific API/DB/Batch details)
+    technical_details = Column(JSON, default={})
+    
+    # Historical Tracking
+    open_pointers = Column(Text)

@@ -50,12 +50,10 @@
                 
                 <span id="lastUpdatedText" class="text-xs text-slate-400 font-medium mr-2">Ready</span>
                 
-                <!-- NEW: ON-DEMAND REPORT BUTTON -->
                 <button id="btn-send-report" onclick="sendOnDemandReport()" class="cursor-pointer bg-indigo-50 hover:bg-indigo-100 text-indigo-600 border border-indigo-200 text-sm font-semibold py-2 px-4 rounded-full shadow-sm transition-colors flex items-center mr-3">
                     <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
                     Email Report
                 </button>
-                <!-- NEW: EXPORT TO ANY LOCATION BUTTON -->
                 <button onclick="downloadReport()" class="cursor-pointer bg-emerald-50 hover:bg-emerald-100 text-emerald-600 border border-emerald-200 text-sm font-semibold py-2 px-4 rounded-full shadow-sm transition-colors flex items-center mr-3">
                     <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
                     Export CSV
@@ -69,7 +67,6 @@
                     <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
                     Upload CSV
                     <input type="file" id="csvFileInput" accept=".csv" class="hidden">
-                    <!-- NEW: Hidden input for Team LOV -->
                     <input type="file" id="teamLovInput" class="hidden" accept=".csv">
                 </label>
             </div>
@@ -83,7 +80,10 @@
                 <p class="text-sm mt-1">Select a project and upload a CSV to populate the board.</p>
             </div>
 
-            <div id="phase1-board" class="hidden max-w-7xl mx-auto space-y-6">
+            <!-- ========================================== -->
+            <!-- PHASE 1: FUNCTIONAL BOARD (Original)       -->
+            <!-- ========================================== -->
+            <div id="phase1-board" class="max-w-7xl mx-auto space-y-6 block">
                 
                 <div class="grid grid-cols-4 gap-4 mb-6">
                     <div class="bg-white rounded-xl p-5 border border-slate-200 shadow-sm">
@@ -103,56 +103,106 @@
                         <h3 id="kpi-ready" class="text-3xl font-extrabold text-slate-800">0</h3>
                     </div>
                 </div>
-                <!-- IDR TABLE CONTAINER -->
+
                 <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                    
-                    <!-- 1. Table Header -->
                     <div class="px-5 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
                         <h2 class="text-lg font-bold text-[#1a233a]">Functional Discovery (IDR) Status</h2>
                         <span class="text-xs font-medium text-slate-500 bg-white border border-slate-200 px-2.5 py-1 rounded-md shadow-sm">Click any row for details</span>
                     </div>
 
-                    <!-- 2. NEW FILTER BAR -->
-                    <!-- 2. NEW FILTER BAR -->
                     <div class="px-5 py-3 border-b border-slate-100 bg-slate-50/50 flex items-center space-x-4">
                         <span class="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center">
                             <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"></path></svg>
                             Filters:
                         </span>
                         
-                        <select id="filter-module" onchange="renderPhase1Dashboard()" class="text-xs border border-slate-300 bg-white hover:bg-slate-50 rounded-md p-2 text-slate-700 shadow-sm focus:ring-2 focus:ring-pink-500 focus:border-pink-500 min-w-[160px] cursor-pointer transition-colors">
+                        <select id="filter-module" onchange="renderPhase1Dashboard()" class="text-xs border border-slate-300 bg-white hover:bg-slate-50 rounded-md p-2 text-slate-700 shadow-sm min-w-[160px] cursor-pointer">
                             <option value="ALL">All Modules</option>
                         </select>
-                        
-                        <select id="filter-owner" onchange="renderPhase1Dashboard()" class="text-xs border border-slate-300 bg-white hover:bg-slate-50 rounded-md p-2 text-slate-700 shadow-sm focus:ring-2 focus:ring-pink-500 focus:border-pink-500 min-w-[160px] cursor-pointer transition-colors">
+                        <select id="filter-owner" onchange="renderPhase1Dashboard()" class="text-xs border border-slate-300 bg-white hover:bg-slate-50 rounded-md p-2 text-slate-700 shadow-sm min-w-[160px] cursor-pointer">
                             <option value="ALL">All Owners</option>
                         </select>
-                        
-                        <select id="filter-status" onchange="renderPhase1Dashboard()" class="text-xs border border-slate-300 bg-white hover:bg-slate-50 rounded-md p-2 text-slate-700 shadow-sm focus:ring-2 focus:ring-pink-500 focus:border-pink-500 min-w-[160px] cursor-pointer transition-colors">
+                        <select id="filter-status" onchange="renderPhase1Dashboard()" class="text-xs border border-slate-300 bg-white hover:bg-slate-50 rounded-md p-2 text-slate-700 shadow-sm min-w-[160px] cursor-pointer">
                             <option value="ALL">All Statuses</option>
                         </select>
                         
-                        <button onclick="clearFilters()" class="text-xs font-bold text-pink-500 hover:text-pink-700 underline ml-auto transition-colors">Clear Filters</button>
+                        <button onclick="clearFilters()" class="text-xs font-bold text-pink-500 hover:text-pink-700 underline ml-auto">Clear Filters</button>
                     </div>
-                    <!-- 3. The Table Body -->
+
                     <div class="overflow-x-auto">
                         <table id="idr-table" class="w-full text-left border-collapse">
-                            <!-- JS injects table here -->
+                            <!-- JS injects Phase 1 table here via app-dashboard.js -->
                         </table>
                     </div>
                 </div>
             </div>
 
-            <div id="phase2-board" class="hidden flex-col items-center justify-center h-full text-slate-400 mt-20">
-                <div class="bg-white p-8 rounded-xl border border-slate-200 shadow-sm text-center max-w-md">
-                    <div class="w-16 h-16 bg-blue-50 text-blue-500 rounded-full flex items-center justify-center mx-auto mb-4">
-                        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 002-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+            <!-- ========================================== -->
+            <!-- PHASE 2: TECHNICAL BOARD (New)             -->
+            <!-- ========================================== -->
+            <div id="phase2-board" class="hidden max-w-7xl mx-auto space-y-6">
+                
+                <div id="tech-dashboard-view" class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden block">
+                    <div class="px-5 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                        <h2 class="text-lg font-bold text-[#1a233a]">Phase 2: Technical IDR Status</h2>
                     </div>
-                    <h2 class="text-xl font-bold text-[#1a233a] mb-2">Phase 2: Technical Design</h2>
-                    <p class="text-sm text-slate-500">This board will handle WUD generation, API specs, and the Scribe AI Agent mapping. Coming soon!</p>
+                    
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left border-collapse" id="technical-table">
+                            <thead>
+                                <tr class="bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-500 uppercase tracking-wider">
+                                    <th class="px-5 py-3">Touchpoint Name</th>
+                                    <th class="px-5 py-3">Module</th>
+                                    <th class="px-5 py-3">Integration</th>
+                                    <th class="px-5 py-3">Source System</th>
+                                    <th class="px-5 py-3">Owner / Dept</th>
+                                    <th class="px-5 py-3">Start Date</th>
+                                    <th class="px-5 py-3">End Date</th>
+                                    <th class="px-5 py-3">Status</th>
+                                    <th class="px-5 py-3 text-right">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tech-table-body" class="divide-y divide-slate-100">
+                                </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div id="tech-detail-view" class="hidden bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                    <div class="px-5 py-4 border-b border-slate-100 flex items-center bg-slate-50">
+                        <button onclick="closeTechDetail()" class="mr-4 text-slate-400 hover:text-slate-600 bg-white border border-slate-200 rounded p-1.5 shadow-sm transition-colors">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
+                        </button>
+                        <div>
+                            <h2 id="tech-detail-title" class="text-xl font-bold text-[#1a233a]">Touchpoint Name</h2>
+                            <p id="tech-detail-module" class="text-sm text-slate-500">Module</p>
+                        </div>
+                    </div>
+                    
+                    <div class="p-6">
+                        <div class="mb-6 border-b border-slate-100 pb-6">
+                            <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Integration Approach</label>
+                            <select id="tech-integration-type" onchange="renderTechFields()" class="w-full max-w-md text-sm border-slate-300 rounded-md p-2.5 focus:ring-pink-500 focus:border-pink-500 shadow-sm">
+                                <option value="unassigned">Unassigned</option>
+                                <option value="api">API</option>
+                                <option value="database">Database</option>
+                                <option value="batch">Batch Job</option>
+                            </select>
+                        </div>
+
+                        <div id="dynamic-tech-fields" class="bg-slate-50 border border-slate-200 rounded-lg p-5 mb-6">
+                            </div>
+
+                        <div class="flex justify-end">
+                            <button onclick="saveTechDetails()" class="bg-[#1a233a] hover:bg-slate-800 text-white font-bold py-2.5 px-6 rounded-md shadow-md transition-all">Save Technical Blueprint</button>
+                        </div>
+                    </div>
                 </div>
             </div>
 
+            <!-- ========================================== -->
+            <!-- PHASE 3: EXECUTION BOARD                   -->
+            <!-- ========================================== -->
             <div id="phase3-board" class="hidden flex-col items-center justify-center h-full text-slate-400 mt-20">
                 <div class="bg-white p-8 rounded-xl border border-slate-200 shadow-sm text-center max-w-md">
                     <div class="w-16 h-16 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -164,125 +214,120 @@
             </div>
 
         </div>
-
-        <div id="slideOutPanel" class="fixed inset-y-0 right-0 w-[450px] bg-white shadow-2xl border-l border-slate-200 z-50 transform translate-x-full flyout-transition flex flex-col">
-            <div class="px-6 py-5 border-b border-slate-100 flex justify-between items-start bg-slate-50">
-                <div>
-                    <span id="flyout-module" class="text-[10px] font-bold uppercase tracking-widest text-pink-600 bg-pink-50 px-2 py-0.5 rounded border border-pink-100">Module</span>
-                    <h2 id="flyout-title" class="text-xl font-bold text-[#1a233a] mt-2 leading-tight">Touchpoint Name</h2>
-                </div>
-                <button onclick="closeFlyout()" class="text-slate-400 hover:text-slate-600 bg-white border border-slate-200 rounded p-1 shadow-sm">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-                </button>
-            </div>
-            
-            <div class="flex-1 overflow-y-auto p-6 space-y-6">
-                <div>
-                    <h4 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">IDR Status</h4>
-                    <span id="flyout-status" class="inline-flex px-3 py-1 text-sm font-bold rounded-full">Status</span>
-                </div>
-
-                <div class="grid grid-cols-2 gap-4 bg-slate-50 p-4 rounded-lg border border-slate-100">
-                    <div>
-                        <h4 class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Source / Target</h4>
-                        <p class="text-sm font-semibold text-[#1a233a] mt-1"><span id="flyout-source"></span> &rarr; <span id="flyout-target"></span></p>
-                    </div>
-                    <div>
-                        <h4 class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Owner / Dept</h4>
-                        <p class="text-sm font-semibold text-[#1a233a] mt-1"><span id="flyout-owner"></span> (<span id="flyout-dept"></span>)</p>
-                    </div>
-                    <div>
-                        <h4 class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Inputs</h4>
-                        <p id="flyout-inputs" class="text-xs font-medium text-slate-700 mt-1">-</p>
-                    </div>
-                    <div>
-                        <h4 class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Expected Output</h4>
-                        <p id="flyout-outputs" class="text-xs font-medium text-slate-700 mt-1">-</p>
-                    </div>
-                </div>
-                
-                <div class="flex justify-between items-center bg-blue-50 border border-blue-100 p-3 rounded-lg">
-                    <div>
-                        <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Pending With</p>
-                        <p id="flyout-pending" class="text-sm font-bold text-blue-700">-</p>
-                    </div>
-                    <div class="text-right">
-                        <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Sign-Off Date</p>
-                        <p id="flyout-signoff" class="text-sm font-bold text-emerald-600">-</p>
-                    </div>
-                </div>
-
-                <div>
-                    <h4 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Business Flow / Objective</h4>
-                    <p id="flyout-flow" class="text-sm text-slate-700 leading-relaxed bg-white border border-slate-200 rounded-lg p-3">-</p>
-                </div>
-                
-                <!-- NEW ACCORDION UI STARTS HERE -->
-                <div class="mt-4 space-y-4 border-t border-slate-200 pt-5 pb-10">
-
-                    <!-- TAB 1: OPEN POINTERS (History + Update) -->
-                    <div class="border border-slate-200 rounded-xl bg-white shadow-sm overflow-hidden">
-                        <button onclick="toggleAccordion('acc-pointers')" class="w-full flex justify-between items-center px-5 py-4 bg-slate-50 hover:bg-slate-100 transition-colors">
-                            <span class="text-xs font-bold text-amber-600 uppercase tracking-wider flex items-center">
-                                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg> 
-                                Open Pointers
-                            </span>
-                            <svg id="icon-acc-pointers" class="w-5 h-5 text-slate-400 transform transition-transform rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
-                        </button>
-                        <div id="acc-pointers" class="p-5 block border-t border-slate-100">
-                            <!-- Pointers History -->
-                            <div id="flyout-pointers-timeline" class="space-y-4 pl-2 border-l-2 border-amber-200 max-h-40 overflow-y-auto mb-5"></div>
-                            
-                            <!-- Update Pointers Form -->
-                            <div class="border-t border-slate-100 pt-4">
-                                <textarea id="log-pointers" rows="2" class="w-full text-sm border-slate-300 rounded-md p-3 bg-white focus:border-amber-500 focus:ring-amber-500 mb-3 shadow-sm" placeholder="Add new open pointers..."></textarea>
-                                <div class="flex justify-end">
-                                    <button onclick="submitActionLog()" class="bg-[#1a233a] hover:bg-slate-800 text-white text-xs font-bold py-2 px-6 rounded-md shadow-md transition-all">Save Pointers</button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- TAB 2: REMARKS & DETAILS (History + Update) -->
-                    <div class="border border-slate-200 rounded-xl bg-white shadow-sm overflow-hidden">
-                        <button onclick="toggleAccordion('acc-remarks')" class="w-full flex justify-between items-center px-5 py-4 bg-slate-50 hover:bg-slate-100 transition-colors">
-                            <span class="text-xs font-bold text-pink-600 uppercase tracking-wider flex items-center">
-                                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg> 
-                                Discussion / Remarks
-                            </span>
-                            <svg id="icon-acc-remarks" class="w-5 h-5 text-slate-400 transform transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
-                        </button>
-                        <div id="acc-remarks" class="p-5 hidden border-t border-slate-100">
-                            <!-- Remarks History -->
-                            <div id="flyout-remarks-timeline" class="space-y-4 pl-2 border-l-2 border-pink-200 max-h-40 overflow-y-auto mb-5"></div>
-                            
-                            <!-- Update Details Form -->
-                            <div class="border-t border-slate-100 pt-4 space-y-4">
-                                <div class="grid grid-cols-2 gap-3">
-                                    <select id="log-pending" class="text-sm border-slate-300 rounded-md p-2.5 w-full text-slate-600 shadow-sm focus:ring-pink-500">
-                                        <option value="">-- Pending With (None) --</option>
-                                    </select>
-                                    <select id="log-status" class="text-sm border-slate-300 rounded-md p-2.5 w-full text-slate-600 shadow-sm focus:ring-pink-500">
-                                        <option value="">-- Update Status? --</option>
-                                        <option value="In-Progress">In-Progress</option>
-                                        <option value="Pending Sign-Off">Pending Sign-Off</option>
-                                        <option value="Signed-Off">Signed-Off</option>
-                                        <option value="On Hold">On Hold</option>
-                                    </select>
-                                </div>
-                                <textarea id="log-comment" rows="2" class="w-full text-sm border-slate-300 rounded-md p-3 focus:ring-pink-500 shadow-sm" placeholder="Add a timeline remark..."></textarea>
-                                <div class="flex justify-end">
-                                    <button onclick="submitActionLog()" class="bg-[#1a233a] hover:bg-slate-800 text-white text-xs font-bold py-2 px-6 rounded-md shadow-md transition-all">Save Details</button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                </div>
-                <!-- ACCORDION UI ENDS HERE -->
-        </div>
     </main>
 
+    <!-- Original Phase 1 Flyout (Kept safe outside boards) -->
+    <div id="slideOutPanel" class="fixed inset-y-0 right-0 w-[450px] bg-white shadow-2xl border-l border-slate-200 z-50 transform translate-x-full flyout-transition flex flex-col">
+        <div class="px-6 py-5 border-b border-slate-100 flex justify-between items-start bg-slate-50">
+            <div>
+                <span id="flyout-module" class="text-[10px] font-bold uppercase tracking-widest text-pink-600 bg-pink-50 px-2 py-0.5 rounded border border-pink-100">Module</span>
+                <h2 id="flyout-title" class="text-xl font-bold text-[#1a233a] mt-2 leading-tight">Touchpoint Name</h2>
+            </div>
+            <button onclick="closeFlyout()" class="text-slate-400 hover:text-slate-600 bg-white border border-slate-200 rounded p-1 shadow-sm">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </button>
+        </div>
+        
+        <div class="flex-1 overflow-y-auto p-6 space-y-6">
+            <div>
+                <h4 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">IDR Status</h4>
+                <span id="flyout-status" class="inline-flex px-3 py-1 text-sm font-bold rounded-full">Status</span>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4 bg-slate-50 p-4 rounded-lg border border-slate-100">
+                <div>
+                    <h4 class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Source / Target</h4>
+                    <p class="text-sm font-semibold text-[#1a233a] mt-1"><span id="flyout-source"></span> &rarr; <span id="flyout-target"></span></p>
+                </div>
+                <div>
+                    <h4 class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Owner / Dept</h4>
+                    <p class="text-sm font-semibold text-[#1a233a] mt-1"><span id="flyout-owner"></span> (<span id="flyout-dept"></span>)</p>
+                </div>
+                <div>
+                    <h4 class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Inputs</h4>
+                    <p id="flyout-inputs" class="text-xs font-medium text-slate-700 mt-1">-</p>
+                </div>
+                <div>
+                    <h4 class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Expected Output</h4>
+                    <p id="flyout-outputs" class="text-xs font-medium text-slate-700 mt-1">-</p>
+                </div>
+            </div>
+            
+            <div class="flex justify-between items-center bg-blue-50 border border-blue-100 p-3 rounded-lg">
+                <div>
+                    <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Pending With</p>
+                    <p id="flyout-pending" class="text-sm font-bold text-blue-700">-</p>
+                </div>
+                <div class="text-right">
+                    <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Sign-Off Date</p>
+                    <p id="flyout-signoff" class="text-sm font-bold text-emerald-600">-</p>
+                </div>
+            </div>
+
+            <div>
+                <h4 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Business Flow / Objective</h4>
+                <p id="flyout-flow" class="text-sm text-slate-700 leading-relaxed bg-white border border-slate-200 rounded-lg p-3">-</p>
+            </div>
+            
+            <div class="mt-4 space-y-4 border-t border-slate-200 pt-5 pb-10">
+                <div class="border border-slate-200 rounded-xl bg-white shadow-sm overflow-hidden">
+                    <button onclick="toggleAccordion('acc-pointers')" class="w-full flex justify-between items-center px-5 py-4 bg-slate-50 hover:bg-slate-100 transition-colors">
+                        <span class="text-xs font-bold text-amber-600 uppercase tracking-wider flex items-center">
+                            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg> 
+                            Open Pointers
+                        </span>
+                        <svg id="icon-acc-pointers" class="w-5 h-5 text-slate-400 transform transition-transform rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                    </button>
+                    <div id="acc-pointers" class="p-5 block border-t border-slate-100">
+                        <div id="flyout-pointers-timeline" class="space-y-4 pl-2 border-l-2 border-amber-200 max-h-40 overflow-y-auto mb-5"></div>
+                        <div class="border-t border-slate-100 pt-4">
+                            <textarea id="log-pointers" rows="2" class="w-full text-sm border-slate-300 rounded-md p-3 bg-white focus:border-amber-500 focus:ring-amber-500 mb-3 shadow-sm" placeholder="Add new open pointers..."></textarea>
+                            <div class="flex justify-end">
+                                <button onclick="submitActionLog()" class="bg-[#1a233a] hover:bg-slate-800 text-white text-xs font-bold py-2 px-6 rounded-md shadow-md transition-all">Save Pointers</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="border border-slate-200 rounded-xl bg-white shadow-sm overflow-hidden">
+                    <button onclick="toggleAccordion('acc-remarks')" class="w-full flex justify-between items-center px-5 py-4 bg-slate-50 hover:bg-slate-100 transition-colors">
+                        <span class="text-xs font-bold text-pink-600 uppercase tracking-wider flex items-center">
+                            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg> 
+                            Discussion / Remarks
+                        </span>
+                        <svg id="icon-acc-remarks" class="w-5 h-5 text-slate-400 transform transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                    </button>
+                    <div id="acc-remarks" class="p-5 hidden border-t border-slate-100">
+                        <div id="flyout-remarks-timeline" class="space-y-4 pl-2 border-l-2 border-pink-200 max-h-40 overflow-y-auto mb-5"></div>
+                        <div class="border-t border-slate-100 pt-4 space-y-4">
+                            <div class="grid grid-cols-2 gap-3">
+                                <select id="log-pending" class="text-sm border-slate-300 rounded-md p-2.5 w-full text-slate-600 shadow-sm focus:ring-pink-500">
+                                    <option value="">-- Pending With (None) --</option>
+                                </select>
+                                <select id="log-status" class="text-sm border-slate-300 rounded-md p-2.5 w-full text-slate-600 shadow-sm focus:ring-pink-500">
+                                    <option value="">-- Update Status? --</option>
+                                    <option value="In-Progress">In-Progress</option>
+                                    <option value="Pending Sign-Off">Pending Sign-Off</option>
+                                    <option value="Signed-Off">Signed-Off</option>
+                                    <option value="On Hold">On Hold</option>
+                                </select>
+                            </div>
+                            <textarea id="log-comment" rows="2" class="w-full text-sm border-slate-300 rounded-md p-3 focus:ring-pink-500 shadow-sm" placeholder="Add a timeline remark..."></textarea>
+                            <div class="flex justify-end">
+                                <button onclick="submitActionLog()" class="bg-[#1a233a] hover:bg-slate-800 text-white text-xs font-bold py-2 px-6 rounded-md shadow-md transition-all">Save Details</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- 1. YOUR ORIGINAL PHASE 1 SCRIPT (Untouched) -->
     <script type="module" src="/js/app-dashboard.js?v=16"></script>
+    
+    <!-- 2. THE NEW PHASE 2 & NAVIGATION SCRIPT -->
+    <script src="js/phase2_technical.js?v=6"></script>
 </body>
 </html>
