@@ -97,10 +97,12 @@ async function populateTechTable() {
                     </select>
                 </td>
                 
-                <td class="px-5 py-4 text-xs font-medium text-indigo-600 italic">${tp.source}</td>
+                <td class="px-5 py-4 text-sm text-slate-600">
+                    ${tp.source}
+                </td>
                 
-                <td class="px-5 py-4 text-xs font-medium text-slate-700">
-                    <span class="bg-slate-100 border border-slate-200 px-2 py-1 rounded">${tp.owner}</span>
+                <td class="px-5 py-4 text-sm text-slate-600 leading-snug">
+                    ${tp.owner}
                 </td>
                 
                 <td class="px-5 py-4">
