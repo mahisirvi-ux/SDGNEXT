@@ -1,7 +1,8 @@
 import os
+import json
+import re
 import boto3
 from dotenv import load_dotenv
-import boto3
 from botocore.exceptions import ClientError
 
 # Load the variables from the .env file
@@ -48,7 +49,7 @@ def generate_blocker_summary(touchpoint_name: str, team_name: str, history_logs:
     if not history_logs:
         return "No historical context available. Please review initial requirements."
 
-    if not client:
+    if not bedrock_client:
         return "Please review the detailed logs below for the latest status. (AI Agent offline)"
 
     timeline_text = ""
@@ -135,30 +136,59 @@ def generate_project_mom(project_data: str) -> str:
     except Exception as e:
         print(f"MOM Generation Failed via Bedrock: {e}")
         return "<p>Error generating MOM. Please review the dashboard manually.</p>"
-def generate_wud_summary(purpose: str, raw_notes: str) -> str:
-    """Generates an Executive Architecture Summary using the existing AWS Bedrock config."""
-    
-    if not raw_notes or str(raw_notes).strip() == "":
-        return "No specific architectural decisions or workshop notes were recorded."
 
+
+def generate_wud_content(api_name: str, module_name: str, crm_location: str, business_flow: str, input_req: str, output_res: str) -> dict:
+    """Generates formal Introduction, Macro Logic, and Expected Output for the WUD."""
+    
+    # Fallback if Bedrock is offline
     if not bedrock_client:
-        return "AI Agent offline. Please review raw workshop notes manually."
+        return {
+            "introduction": f"The '{api_name}' API under the {module_name} module is triggered from {crm_location} to facilitate data transfer.",
+            "macro_logic": "• AI Agent offline.\n• Please review manually.",
+            "expected_output": "• AI Agent offline.\n• Please review manually."
+        }
 
     system_prompt = """
-    You are an Enterprise Integration Architect.
-    Write a 1 to 2 paragraph "Executive Architecture Summary" that explains what this API does, the architectural decisions made, and any major action items. 
-    
-    Rules:
-    1. DO NOT use HTML. Output plain text only. 
-    2. Be highly professional, objective, and concise.
-    3. Base your summary STRICTLY on the provided business purpose and raw workshop notes.
+    You are an expert Enterprise Integration Business Analyst. 
+    Translate the provided inputs into formal technical specifications for a Work Unit Document (WUD).
+
+    You must output your response STRICTLY as a JSON object with exactly three keys: "introduction", "macro_logic", and "expected_output".
+
+    Key 1: "introduction"
+    - Write a professional, concise 2 to 3 line overview.
+    - You MUST explicitly name the Module.
+    - You MUST explicitly state where the API is called within the CRM (e.g., Lead Journey, Onboarding Process, Specific Layout).
+    - Explain the core business purpose of the API.
+    - Output as a standard text paragraph (no bullet points).
+
+    Key 2: "macro_logic"
+    - Write a step-by-step flow based on the provided Business Flow.
+    - Explicitly state: "Input Parameters will be:" followed by a summary of the provided Input Details.
+    - Explicitly state: "Based On Input Parameter, Output Parameter will be:" followed by a summary of the Output Details.
+    - Output as a bulleted list (use the '•' character and newlines '\n').
+
+    Key 3: "expected_output"
+    - Output as a bulleted list (use the '•' character and newlines '\n').
+    - Bullet 1 MUST start with: "In the success scenario, when valid input is passed, the system will..." and describe the successful outcome based on the Output Details.
+    - Bullet 2 MUST be exactly: "In Failure Scenario, If Invalid Response is passed it will display respective error messages in response."
+
+    Do not include markdown code blocks (like ```json). Return ONLY the raw, valid JSON object.
     """
 
-    user_prompt = f"Business Purpose: {purpose}\n\nRaw Notes:\n{raw_notes}"
+    user_prompt = f"API Name: {api_name}\nModule: {module_name}\nTrigger Location in CRM: {crm_location}\nBusiness Flow / Objective: {business_flow}\n\nInput Details:\n{input_req}\n\nOutput Details:\n{output_res}"
 
     try:
-        # Utilizing your existing helper function with a low temperature for professional formatting
-        return _invoke_bedrock(system_prompt, user_prompt, temperature=0.2)
+        response_text = _invoke_bedrock(system_prompt, user_prompt, temperature=0.2)
+        
+        # Strip accidental markdown formatting the LLM might have added
+        clean_json = re.sub(r'```json|```', '', response_text).strip()
+        return json.loads(clean_json)
+
     except Exception as e:
-        print(f"WUD Summary Generation Failed via Bedrock: {e}")
-        return "Error:  Not Able to generate AI summary due to an API issue. Please review raw workshop notes manually."
+        print(f"WUD Content Generation Failed via Bedrock: {e}")
+        return {
+            "introduction": f"The '{api_name}' integration facilitates seamless data transfer.",
+            "macro_logic": "• Error: Could not generate logic.\n• Please check API.",
+            "expected_output": "• Error: Could not generate output.\n• Please check API."
+        }
