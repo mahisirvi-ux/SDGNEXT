@@ -135,3 +135,30 @@ def generate_project_mom(project_data: str) -> str:
     except Exception as e:
         print(f"MOM Generation Failed via Bedrock: {e}")
         return "<p>Error generating MOM. Please review the dashboard manually.</p>"
+def generate_wud_summary(purpose: str, raw_notes: str) -> str:
+    """Generates an Executive Architecture Summary using the existing AWS Bedrock config."""
+    
+    if not raw_notes or str(raw_notes).strip() == "":
+        return "No specific architectural decisions or workshop notes were recorded."
+
+    if not bedrock_client:
+        return "AI Agent offline. Please review raw workshop notes manually."
+
+    system_prompt = """
+    You are an Enterprise Integration Architect.
+    Write a 1 to 2 paragraph "Executive Architecture Summary" that explains what this API does, the architectural decisions made, and any major action items. 
+    
+    Rules:
+    1. DO NOT use HTML. Output plain text only. 
+    2. Be highly professional, objective, and concise.
+    3. Base your summary STRICTLY on the provided business purpose and raw workshop notes.
+    """
+
+    user_prompt = f"Business Purpose: {purpose}\n\nRaw Notes:\n{raw_notes}"
+
+    try:
+        # Utilizing your existing helper function with a low temperature for professional formatting
+        return _invoke_bedrock(system_prompt, user_prompt, temperature=0.2)
+    except Exception as e:
+        print(f"WUD Summary Generation Failed via Bedrock: {e}")
+        return "Error:  Not Able to generate AI summary due to an API issue. Please review raw workshop notes manually."
