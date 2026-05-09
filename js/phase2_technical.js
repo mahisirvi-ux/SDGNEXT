@@ -58,75 +58,130 @@ async function populateTechTable() {
     const tbody = document.getElementById('tech-table-body');
     if (!tbody) return;
     
-    tbody.innerHTML = '<tr><td colspan="9" class="px-5 py-8 text-center text-sm font-medium text-slate-400">Loading live data from database...</td></tr>';
-
+    tbody.innerHTML = '<tr><td colspan="8" class="px-5 py-8 text-center text-sm font-medium text-slate-400">Loading live data from database...</td></tr>';
     try {
         const response = await fetch('/api/phase2/dashboard?t=' + new Date().getTime());
         const result = await response.json();
         const eligibleItems = result.data || [];
 
+        let countPending = 0;
+        let countScheduled = 0;
+        let countRescheduled = 0; // <--- NEW: Initialize Counter
+        let countInProgress = 0;
+        let countDelayed = 0;
+        // ---------------------------------
+
         if (eligibleItems.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="9" class="px-5 py-8 text-center text-sm text-slate-500 italic">No touchpoints have been signed off in Phase 1 yet.</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="8" class="px-5 py-8 text-center text-sm text-slate-500 italic">No touchpoints have been signed off in Phase 1 yet.</td></tr>`;
+            
+            // Zero out metrics if empty
+            document.getElementById('tech-metric-total').innerText = 0;
+            document.getElementById('tech-metric-pending').innerText = 0;
+            document.getElementById('tech-metric-scheduled').innerText = 0;
+            document.getElementById('tech-metric-rescheduled').innerText = 0; // <--- NEW: Zero out
+            document.getElementById('tech-metric-inprogress').innerText = 0;
+            document.getElementById('tech-metric-delayed').innerText = 0;
             return;
         }
 
         tbody.innerHTML = ''; 
-        window.phase2DataMap = {}; // Reset state mapping
+        window.phase2DataMap = {}; 
 
         eligibleItems.forEach(tp => {
-            // Save the row data into global state for the Detail Form
             window.phase2DataMap[tp.id] = tp; 
+
+            // --- COUNT THE CORRECT STATUSES ---
+            if (tp.techStatus === 'Pending Workshop') countPending++;
+            if (tp.techStatus === 'Scheduled') countScheduled++;
+            if (tp.techStatus === 'Rescheduled') countRescheduled++; // <--- NEW: Count the status
+            if (tp.techStatus === 'In Progress') countInProgress++;
+            if (tp.techStatus === 'Delayed') countDelayed++;
 
             const tr = document.createElement('tr');
             tr.className = "hover:bg-slate-50 transition-colors border-b border-slate-100";
-            
-            // Format dates
             const safeStart = (tp.start && tp.start !== "-" && tp.start !== "None") ? tp.start : "";
             const safeEnd = (tp.end && tp.end !== "-" && tp.end !== "None") ? tp.end : "";
+            
+            const rawOwner = tp.owner || "Unassigned";
+            const ownerOnly = typeof rawOwner === 'string' && rawOwner.includes('(') 
+                ? rawOwner.split(' (')[0].trim() 
+                : rawOwner;
+
+            // --- THESE ARE THE TWO LINES THAT WENT MISSING! ---
+           // --- NEW: Safe Integration Logic ---
+            const safeIntegration = tp.integration || 'unassigned';
+            const integrationDisplay = safeIntegration === 'unassigned' 
+                ? '<span class="text-slate-400 italic text-xs">Pending Workshop</span>' 
+                : `<span class="capitalize font-medium text-slate-700">${safeIntegration}</span>`;
+
+            // Setup the selected state for the new Integration Dropdown
+            const isApi = safeIntegration.toLowerCase() === 'api' ? 'selected' : '';
+            const isDb = safeIntegration.toLowerCase() === 'database' ? 'selected' : '';
+            const isUnassignedInteg = (!isApi && !isDb) ? 'selected' : '';
+            // ------------------------------------
+
+            const isCompleted = tp.techStatus === 'Completed' ? 'selected' : '';
+            const isRescheduled = tp.techStatus === 'Rescheduled' ? 'selected' : '';
+            const isAuto = (!isCompleted && !isRescheduled) ? 'selected' : '';
 
             tr.innerHTML = `
-                <td class="px-5 py-4 text-sm font-bold text-slate-800 cursor-pointer hover:text-pink-600 transition-colors" onclick="openTechDetail(${tp.id})">${tp.name}</td>
+                <td class="px-5 py-4 text-sm font-bold text-slate-800 group">
+                    <button onclick="window.location.href='/details?id=${tp.id}'" class="text-[#1a233a] hover:text-indigo-600 transition-colors text-left flex items-center gap-2">
+                        ${tp.name}
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
+                    </button>
+                </td>
+                
                 <td class="px-5 py-4 text-sm text-slate-600">${tp.module}</td>
                 
-                <td class="px-5 py-4">
-                    <select id="integ-${tp.id}" class="text-xs border border-slate-300 rounded p-1.5 shadow-sm bg-slate-50 disabled:opacity-60 disabled:cursor-not-allowed" disabled>
-                        <option value="unassigned" ${tp.integration === 'unassigned' ? 'selected' : ''}>Unassigned</option>
-                        <option value="api" ${tp.integration === 'api' ? 'selected' : ''}>API</option>
-                        <option value="database" ${tp.integration === 'database' ? 'selected' : ''}>Database</option>
-                        <option value="batch" ${tp.integration === 'batch' ? 'selected' : ''}>Batch Job</option>
+                <td class="px-5 py-4 text-sm">
+                    <div id="integ-view-${tp.id}">
+                        ${integrationDisplay}
+                    </div>
+                    <select id="integ-edit-${tp.id}" class="hidden text-xs border border-slate-300 rounded p-1 shadow-sm bg-white w-full max-w-[120px]">
+                        <option value="unassigned" ${isUnassignedInteg}>Unassigned</option>
+                        <option value="api" ${isApi}>API</option>
+                        <option value="database" ${isDb}>Database</option>
                     </select>
                 </td>
                 
-                <td class="px-5 py-4 text-sm text-slate-600">
-                    ${tp.source}
-                </td>
-                
-                <td class="px-5 py-4 text-sm text-slate-600 leading-snug">
-                    ${tp.owner}
-                </td>
+                <td class="px-5 py-4 text-sm text-slate-600">${ownerOnly}</td>
                 
                 <td class="px-5 py-4">
                     <input type="date" id="start-${tp.id}" value="${safeStart}" class="text-xs border border-slate-300 rounded p-1.5 shadow-sm bg-slate-50 disabled:opacity-60 disabled:cursor-not-allowed" disabled>
                 </td>
+                
                 <td class="px-5 py-4">
                     <input type="date" id="end-${tp.id}" value="${safeEnd}" class="text-xs border border-slate-300 rounded p-1.5 shadow-sm bg-slate-50 disabled:opacity-60 disabled:cursor-not-allowed" disabled>
                 </td>
                 
-                <td class="px-5 py-4">
-                    <span class="px-2.5 py-1 text-[10px] uppercase font-bold rounded-full border ${tp.statusClass}">${tp.techStatus}</span>
+                <td class="px-5 py-4 whitespace-nowrap">
+                    <span id="status-pill-${tp.id}" class="px-2.5 py-1 text-[10px] uppercase font-bold rounded-full border ${tp.statusClass}">${tp.techStatus}</span>
+                    
+                    <select id="status-edit-${tp.id}" class="hidden text-xs border border-slate-300 rounded p-1 shadow-sm bg-white w-full max-w-[120px]">
+                        <option value="Auto" ${isAuto}>Auto-Calculate</option>
+                        <option value="Completed" ${isCompleted}>Completed</option>
+                        <option value="Rescheduled" ${isRescheduled}>Rescheduled</option>
+                    </select>
                 </td>
                 
-                <td class="px-5 py-4 text-right min-w-[80px]">
+                <td class="px-5 py-4 text-right min-w-[140px]">
+                    <button onclick="window.location.href='/details?id=${tp.id}'" class="text-indigo-600 hover:text-indigo-800 text-xs font-bold transition-colors mr-3">Specs</button>
                     <button id="edit-btn-${tp.id}" onclick="enableEditMode(${tp.id})" class="text-blue-600 hover:text-blue-800 text-xs font-bold transition-colors">Edit</button>
                     <button id="save-btn-${tp.id}" onclick="saveRowChanges(${tp.id})" class="hidden bg-emerald-500 hover:bg-emerald-600 text-white text-[10px] uppercase font-bold py-1.5 px-3 rounded shadow-sm transition-all">Save</button>
                 </td>
             `;
             tbody.appendChild(tr);
         });
-        
+        document.getElementById('tech-metric-total').innerText = eligibleItems.length;
+        document.getElementById('tech-metric-pending').innerText = countPending;
+        document.getElementById('tech-metric-scheduled').innerText = countScheduled;
+        document.getElementById('tech-metric-rescheduled').innerText = countRescheduled; // <--- NEW: Push to UI
+        document.getElementById('tech-metric-inprogress').innerText = countInProgress;
+        document.getElementById('tech-metric-delayed').innerText = countDelayed;
     } catch (error) {
         console.error("Error fetching live Phase 2 data:", error);
-        tbody.innerHTML = `<tr><td colspan="9" class="px-5 py-8 text-center text-sm font-bold text-red-500">Failed to load data.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="8" class="px-5 py-8 text-center text-sm font-bold text-red-500">Failed to load data.</td></tr>`;
     }
 }
 
@@ -134,13 +189,20 @@ async function populateTechTable() {
 // INLINE EDITING LOGIC (Control Tower)
 // ==========================================
 function enableEditMode(touchpointId) {
-    document.getElementById(`integ-${touchpointId}`).disabled = false;
     document.getElementById(`start-${touchpointId}`).disabled = false;
     document.getElementById(`end-${touchpointId}`).disabled = false;
     
-    document.getElementById(`integ-${touchpointId}`).classList.replace('bg-slate-50', 'bg-white');
     document.getElementById(`start-${touchpointId}`).classList.replace('bg-slate-50', 'bg-white');
     document.getElementById(`end-${touchpointId}`).classList.replace('bg-slate-50', 'bg-white');
+
+    // --- NEW: Toggle Integration Dropdown ---
+    document.getElementById(`integ-view-${touchpointId}`).classList.add('hidden');
+    document.getElementById(`integ-edit-${touchpointId}`).classList.remove('hidden');
+    // ----------------------------------------
+
+    // Toggle the Status View to Edit Dropdown
+    document.getElementById(`status-pill-${touchpointId}`).classList.add('hidden');
+    document.getElementById(`status-edit-${touchpointId}`).classList.remove('hidden');
 
     document.getElementById(`edit-btn-${touchpointId}`).classList.add('hidden');
     document.getElementById(`save-btn-${touchpointId}`).classList.remove('hidden');
@@ -152,9 +214,16 @@ async function saveRowChanges(touchpointId) {
     saveBtn.classList.add("opacity-50", "cursor-not-allowed");
 
     const payload = {
-        integration: document.getElementById(`integ-${touchpointId}`).value,
+        // --- THIS IS THE CRITICAL FIX ---
+        // Grab the value from the newly visible edit dropdown
+        integration: document.getElementById(`integ-edit-${touchpointId}`).value,
+        // --------------------------------
+        
         start: document.getElementById(`start-${touchpointId}`).value,
-        end: document.getElementById(`end-${touchpointId}`).value
+        end: document.getElementById(`end-${touchpointId}`).value,
+        
+        // Harvest the manual status override
+        status: document.getElementById(`status-edit-${touchpointId}`).value
     };
 
     try {
@@ -175,7 +244,7 @@ async function saveRowChanges(touchpointId) {
         }
     } catch (err) {
         console.error("Save failed:", err);
-        alert("Network error. Could not connect to server.");
+        alert("Network error.");
         saveBtn.innerText = "Save";
         saveBtn.classList.remove("opacity-50", "cursor-not-allowed");
     }
@@ -360,4 +429,40 @@ if (phase2Btn) {
     phase2Btn.addEventListener('click', () => {
         populateTechTable();
     });
+}
+async function triggerWorkshopInvites() {
+    const btn = document.getElementById('btn-send-invites');
+    const originalHTML = btn.innerHTML;
+    
+    // UI Feedback: Show loading state
+    btn.innerHTML = `<svg class="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Sending...`;
+    btn.disabled = true;
+    btn.classList.add('opacity-75', 'cursor-wait');
+
+    try {
+        const response = await fetch('/api/phase2/trigger-invites', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok && data.status === "success") {
+            if (data.emails_sent > 0) {
+                alert(`Success! Generated and sent ${data.emails_sent} workshop invites for tomorrow.`);
+            } else {
+                alert(`Notice: ${data.message}`);
+            }
+        } else {
+            alert("Error sending invites: " + data.message);
+        }
+    } catch (err) {
+        console.error("Invite trigger failed:", err);
+        alert("Network error. Could not connect to server.");
+    } finally {
+        // Restore button state
+        btn.innerHTML = originalHTML;
+        btn.disabled = false;
+        btn.classList.remove('opacity-75', 'cursor-wait');
+    }
 }

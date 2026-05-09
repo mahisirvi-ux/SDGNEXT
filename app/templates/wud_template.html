@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        /* --- GLOBAL PRINT SETTINGS --- */
+        @page { size: A4; margin: 0; } /* Remove margins so the dark cover page can stretch */
+        body { font-family: 'Segoe UI', Arial, sans-serif; margin: 0; padding: 0; -webkit-print-color-adjust: exact; }
+        
+        /* =========================================
+           COVER PAGE (DARK THEME)
+           ========================================= */
+        .cover-page {
+            background-color: #0b0f15; /* Deep corporate black */
+            color: #ffffff;
+            width: 100%;
+            height: 1080px; /* Forces it to take up the full first page */
+            page-break-after: always; /* Forces content to Page 2 */
+            position: relative;
+            box-sizing: border-box;
+            padding: 60px;
+        }
+
+        .cover-top-title {
+            text-align: center;
+            font-size: 14px;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            margin-top: 20px;
+            margin-bottom: 60px;
+            color: #f8fafc;
+        }
+
+        /* The area you circled in red */
+        .cover-dynamic-area {
+            text-align: center;
+            margin-bottom: 50px;
+            padding: 20px;
+            border-left: 4px solid #e11d48; /* Pink accent matching BusinessNext logo */
+            border-right: 4px solid #e11d48;
+            background: linear-gradient(90deg, rgba(225,29,72,0.05) 0%, rgba(225,29,72,0) 50%, rgba(225,29,72,0.05) 100%);
+        }
+
+        .cover-touchpoint-name {
+            font-size: 36px;
+            font-weight: 900;
+            color: #ffffff;
+            margin: 0 0 15px 0;
+            line-height: 1.2;
+        }
+
+        .cover-source-system {
+            font-size: 18px;
+            color: #94a3b8;
+            font-weight: 500;
+            margin: 0;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        /* The Building Hero Image */
+        /* The Building Hero Image */
+        .cover-hero-image {
+            width: 100%;
+            height: 450px;
+            /* Using a live corporate skyscraper image from Unsplash */
+            background-image: url('https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?q=80&w=1200&auto=format&fit=crop');
+            background-size: cover;
+            background-position: center bottom;
+            margin-bottom: 40px;
+            box-shadow: 0px 4px 15px rgba(0, 0, 0, 0.5);
+        }
+
+        /* The Logo at the bottom */
+        .cover-logo {
+            position: absolute;
+            bottom: 60px;
+            left: 60px;
+        }
+        
+        .cover-logo-placeholder {
+            font-size: 28px;
+            font-weight: 900;
+            color: white;
+            line-height: 1;
+            letter-spacing: -1px;
+        }
+        .cover-logo-placeholder span { color: #e11d48; font-size: 12px; display: block; margin-bottom: 4px; letter-spacing: 2px;}
+
+        /* =========================================
+           CONTENT PAGES (WHITE THEME)
+           ========================================= */
+        .content-page {
+            background-color: #ffffff;
+            color: #1e293b;
+            padding: 40px 60px; /* Re-apply margins for text readability */
+        }
+
+        .header { border-bottom: 3px solid #0f172a; padding-bottom: 10px; margin-bottom: 30px; }
+        .header h1 { color: #0f172a; margin: 0; font-size: 20px; text-transform: uppercase; }
+        .header p { color: #64748b; font-size: 12px; font-weight: bold; text-transform: uppercase; margin-top: 5px; }
+        
+        h2 { color: #0f172a; font-size: 18px; border-bottom: 2px solid #e2e8f0; padding-bottom: 6px; margin-top: 35px; margin-bottom: 15px; }
+        
+        table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 13px; page-break-inside: avoid; }
+        th, td { border: 1px solid #cbd5e1; padding: 12px; text-align: left; vertical-align: top; }
+        th { background-color: #f8fafc; font-weight: bold; width: 30%; color: #475569; text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px;}
+        
+        .ai-summary { background-color: #f8fafc; border-left: 4px solid #3b82f6; padding: 18px; font-size: 13px; color: #334155; margin-bottom: 25px; line-height: 1.6; }
+    </style>
+</head>
+<body>
+
+    <div class="cover-page">
+        <div class="cover-top-title">Integration Touch points for {{ target }}</div>
+        
+        <div class="cover-dynamic-area">
+            <h1 class="cover-touchpoint-name">{{ api_name }}</h1>
+            <p class="cover-source-system">Source: {{ source }}</p>
+        </div>
+
+        <div class="cover-hero-image">
+        </div>
+
+        <div class="cover-logo">
+            <div class="cover-logo-placeholder" style="line-height: 0.9;">
+                <span style="color: #e11d48; font-size: 16px; letter-spacing: 1px; margin-left: 20px;">
+                    &#10022; &#10022; &#10022; &#10022;
+                </span><br>
+                <span style="font-size: 32px;">BUSINESS</span><br>
+                <span style="font-size: 32px;">NEXT</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="content-page">
+        <div class="header">
+            <h1>Document Control & Specifications</h1>
+            <p>Integration: {{ api_name }} | Status: {{ status }}</p>
+        </div>
+
+        <h2>1. Executive Architecture Summary</h2>
+        <div class="ai-summary">
+            {{ ai_generated_summary }}
+        </div>
+
+        <h2>2. Functional Context</h2>
+        <table>
+            <tr><th>Module</th><td>{{ module }}</td></tr>
+            <tr><th>Source System</th><td>{{ source }}</td></tr>
+            <tr><th>Target System</th><td>{{ target }}</td></tr>
+            <tr><th>Business Flow</th><td>{{ business_flow }}</td></tr>
+        </table>
+
+        <h2>3. API Specifications</h2>
+        <table>
+            <tr><th>Method & Endpoint</th><td><strong>{{ api_method }}</strong> {{ api_url }}</td></tr>
+            <tr><th>Authentication</th><td>{{ api_auth }}</td></tr>
+        </table>
+    </div>
+
+</body>
+</html>

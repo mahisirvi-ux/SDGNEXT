@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Touchpoint Details | SDGNext</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-50 font-sans text-slate-800 antialiased min-h-screen flex flex-col">
+
+    <div class="bg-white border-b border-slate-200 sticky top-0 z-10 shadow-sm">
+        <div class="max-w-6xl mx-auto px-6 py-4 flex justify-between items-center">
+            <div class="flex items-center gap-4">
+                <a href="/" class="text-slate-400 hover:text-slate-700 p-2 rounded-full hover:bg-slate-100 transition-colors">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
+                </a>
+                <div>
+                    <div class="flex items-center gap-3">
+                        <h1 id="fd-name" class="text-2xl font-black text-[#1a233a]">Loading...</h1>
+                        <span id="fd-status-badge" class="px-2.5 py-1 text-[10px] uppercase font-bold rounded-full border bg-slate-100 text-slate-600">...</span>
+                    </div>
+                    <p class="text-sm text-slate-500 font-medium mt-1">Module: <span id="fd-module" class="text-slate-700">...</span> | Owner: <span id="fd-owner" class="text-slate-700">...</span></p>
+                </div>
+            </div>
+            <div class="flex gap-3">
+                <button id="fd-btn-generate" onclick="generateWUD()" class="bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 text-sm font-bold py-2 px-4 rounded shadow-sm transition-all" >
+                    Generate Work Unit
+                </button>
+                <button id="fd-btn-edit" onclick="toggleDetailsEditMode()" class="bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 text-sm font-bold py-2 px-6 rounded shadow-sm transition-all">
+                    Edit Details
+                </button>
+                <button id="fd-btn-save" onclick="saveFullDetails()" class="hidden bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold py-2 px-6 rounded shadow-sm transition-all">
+                    Save Changes
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="max-w-6xl mx-auto px-6 py-8 grid grid-cols-1 lg:grid-cols-3 gap-8 flex-grow w-full">
+        <input type="hidden" id="fd-id">
+        <input type="hidden" id="fd-integration-type">
+
+        <div class="lg:col-span-2 space-y-6">
+            
+            <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-6 border-t-4 border-t-indigo-500">
+                <div class="flex justify-between items-center mb-4 border-b border-slate-100 pb-2">
+                    <h2 class="text-sm font-bold text-slate-800 uppercase tracking-wider">Touchpoint details</h2>
+                    <span class="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Phase 1 Data</span>
+                </div>
+                
+                <div class="grid grid-cols-2 md:grid-cols-3 gap-y-5 gap-x-6">
+                    <div><label class="block text-[9px] font-bold text-slate-400 uppercase tracking-tight">Name</label><div id="fd-val-name" class="text-sm font-bold text-slate-800 truncate">...</div></div>
+                    <div><label class="block text-[9px] font-bold text-slate-400 uppercase tracking-tight">Module</label><div id="fd-val-module" class="text-sm font-medium text-slate-800">...</div></div>
+                    <div><label class="block text-[9px] font-bold text-slate-400 uppercase tracking-tight">Integration Type</label><div id="fd-val-int" class="text-sm font-medium text-slate-800 uppercase">...</div></div>
+                    
+                    <div><label class="block text-[9px] font-bold text-slate-400 uppercase tracking-tight">Source System</label><div id="fd-val-source" class="text-sm font-medium text-slate-800">...</div></div>
+                    <div><label class="block text-[9px] font-bold text-slate-400 uppercase tracking-tight">Target System</label><div id="fd-val-target" class="text-sm font-medium text-slate-800">...</div></div>
+                    <div><label class="block text-[9px] font-bold text-slate-400 uppercase tracking-tight">Sign-Off Date</label><div id="fd-val-signoff" class="text-sm font-medium text-slate-600">...</div></div>
+
+                    <div><label class="block text-[9px] font-bold text-slate-400 uppercase tracking-tight">Module Owner</label><div id="fd-val-mod-owner" class="text-sm font-medium text-slate-800">...</div></div>
+                    <div><label class="block text-[9px] font-bold text-slate-400 uppercase tracking-tight">Technical Owner</label><div id="fd-val-tech-owner" class="text-sm font-medium text-slate-800">...</div></div>
+                    <div><label class="block text-[9px] font-bold text-slate-400 uppercase tracking-tight">Business Fallback</label><div id="fd-val-fallback" class="text-sm font-medium text-slate-600">...</div></div>
+                </div>
+
+                <div class="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="bg-slate-50 p-3 rounded border border-slate-100">
+                        <label class="block text-[9px] font-bold text-indigo-400 uppercase mb-1">Input Data</label>
+                        <div id="fd-val-input" class="text-xs text-slate-700 leading-relaxed">...</div>
+                    </div>
+                    <div class="bg-slate-50 p-3 rounded border border-slate-100">
+                        <label class="block text-[9px] font-bold text-emerald-400 uppercase mb-1">Output Data</label>
+                        <div id="fd-val-output" class="text-xs text-slate-700 leading-relaxed">...</div>
+                    </div>
+                    <div class="md:col-span-2 bg-slate-50 p-3 rounded border border-slate-100">
+                        <label class="block text-[9px] font-bold text-slate-400 uppercase mb-1">Business Flow / Objective</label>
+                        <div id="fd-val-flow" class="text-xs text-slate-700 leading-relaxed italic">...</div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="fd-section-api" class="hidden bg-white rounded-xl border border-blue-200 shadow-sm p-6">
+                <div class="flex justify-between items-center mb-4 border-b border-blue-100 pb-2">
+                    <h2 class="text-sm font-bold text-blue-800 uppercase tracking-wider">API Implementation Details</h2>
+                    <span class="bg-blue-100 text-blue-800 text-[10px] uppercase font-bold px-2 py-1 rounded">REST/SOAP</span>
+                </div>
+                <div class="grid grid-cols-2 gap-x-6 gap-y-4">
+                    <div class="col-span-2"><label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">API Name</label><input type="text" id="fd-api-name" disabled class="w-full text-sm p-2 rounded border border-slate-300 disabled:border-transparent disabled:bg-transparent disabled:p-0 disabled:font-bold disabled:text-slate-800 transition-all"></div>
+                    <div><label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">API Type</label><select id="fd-api-type" disabled class="w-full text-sm p-2 rounded border border-slate-300 disabled:appearance-none disabled:border-transparent disabled:bg-transparent disabled:p-0 disabled:font-medium disabled:text-slate-800 transition-all"><option value="REST">REST</option><option value="SOAP">SOAP</option><option value="GraphQL">GraphQL</option></select></div>
+                    <div><label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Auth Type</label><select id="fd-api-auth" disabled class="w-full text-sm p-2 rounded border border-slate-300 disabled:appearance-none disabled:border-transparent disabled:bg-transparent disabled:p-0 disabled:font-medium disabled:text-slate-800 transition-all"><option value="OAuth 2.0">OAuth 2.0</option><option value="API Key">API Key</option><option value="Basic Auth">Basic Auth</option><option value="JWT">JWT</option></select></div>
+                    <div class="col-span-2"><label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Base URL</label><input type="text" id="fd-api-url" disabled class="w-full text-sm p-2 rounded border border-slate-300 disabled:border-transparent disabled:bg-transparent disabled:p-0 disabled:font-medium disabled:text-slate-800 transition-all"></div>
+                    <div><label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Method Name</label><input type="text" id="fd-api-method-name" disabled class="w-full text-sm p-2 rounded border border-slate-300 disabled:border-transparent disabled:bg-transparent disabled:p-0 disabled:font-medium disabled:text-slate-800 transition-all"></div>
+                    <div><label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Method Type</label><select id="fd-api-method" disabled class="w-full text-sm p-2 rounded border border-slate-300 disabled:appearance-none disabled:border-transparent disabled:bg-transparent disabled:p-0 disabled:font-medium disabled:text-slate-800 transition-all"><option value="GET">GET</option><option value="POST">POST</option><option value="PUT">PUT</option><option value="DELETE">DELETE</option></select></div>
+                    <div class="col-span-2 mt-2"><label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Sample Request</label><textarea id="fd-api-req" rows="4" disabled class="w-full font-mono text-xs rounded border border-slate-300 p-3 bg-slate-50 disabled:bg-slate-100 disabled:border-transparent transition-all"></textarea></div>
+                    <div class="col-span-2 mt-2"><label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Sample Response</label><textarea id="fd-api-res" rows="4" disabled class="w-full font-mono text-xs rounded border border-slate-300 p-3 bg-slate-50 disabled:bg-slate-100 disabled:border-transparent transition-all"></textarea></div>
+                </div>
+            </div>
+
+            <div id="fd-section-db" class="hidden bg-white rounded-xl border border-emerald-200 shadow-sm p-6">
+                <div class="flex justify-between items-center mb-4 border-b border-emerald-100 pb-2">
+                    <h2 class="text-sm font-bold text-emerald-800 uppercase tracking-wider">Database Specifications</h2>
+                    <span class="bg-emerald-100 text-emerald-800 text-[10px] uppercase font-bold px-2 py-1 rounded">DB Mode</span>
+                </div>
+                <div class="grid grid-cols-2 gap-x-6 gap-y-4">
+                    <div><label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Database Engine</label><select id="fd-db-engine" disabled class="w-full text-sm p-2 rounded border border-slate-300 disabled:appearance-none disabled:border-transparent disabled:bg-transparent disabled:p-0 disabled:font-medium disabled:text-slate-800 transition-all"><option value="Oracle">Oracle</option><option value="PostgreSQL">PostgreSQL</option><option value="SQL Server">MS SQL Server</option></select></div>
+                    <div><label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Target Object</label><input type="text" id="fd-db-target" disabled class="w-full text-sm p-2 rounded border border-slate-300 disabled:border-transparent disabled:bg-transparent disabled:p-0 disabled:font-medium disabled:text-slate-800 transition-all"></div>
+                    <div><label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Service Account</label><input type="text" id="fd-db-account" disabled class="w-full text-sm p-2 rounded border border-slate-300 disabled:border-transparent disabled:bg-transparent disabled:p-0 disabled:font-medium disabled:text-slate-800 transition-all"></div>
+                    <div><label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Firewall / IPs</label><input type="text" id="fd-db-firewall" disabled class="w-full text-sm p-2 rounded border border-slate-300 disabled:border-transparent disabled:bg-transparent disabled:p-0 disabled:font-medium disabled:text-slate-800 transition-all"></div>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+                <h2 class="text-sm font-bold text-slate-800 uppercase tracking-wider mb-4 border-b border-slate-100 pb-2">Workshop Notes & Pointers</h2>
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Discussion Summary</label>
+                        <textarea id="fd-discussion" rows="4" disabled class="w-full text-sm rounded-lg p-3 border border-slate-300 focus:ring-2 focus:ring-indigo-500 bg-white disabled:bg-transparent disabled:border-transparent disabled:p-0 disabled:text-slate-800 disabled:resize-none transition-all"></textarea>
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-bold text-amber-500 uppercase tracking-wider mb-1">Action Log History (Type here to append)</label>
+                        <textarea id="fd-pointers" rows="6" disabled class="w-full text-sm rounded-lg p-3 border border-slate-300 focus:ring-2 focus:ring-amber-500 bg-amber-50 disabled:bg-transparent disabled:border-transparent disabled:p-0 disabled:text-slate-800 disabled:resize-none transition-all"></textarea>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="space-y-6">
+            <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+                <h2 class="text-sm font-bold text-slate-800 uppercase tracking-wider mb-4 border-b border-slate-100 pb-2">Tracking Details</h2>
+                <div class="space-y-4">
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Start Date</label>
+                            <input type="date" id="fd-start" disabled class="w-full text-sm p-2 rounded border border-slate-300 disabled:border-transparent disabled:bg-transparent disabled:p-0 disabled:font-medium disabled:text-slate-800 transition-all">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">End Date</label>
+                            <input type="date" id="fd-end" disabled class="w-full text-sm p-2 rounded border border-slate-300 disabled:border-transparent disabled:bg-transparent disabled:p-0 disabled:font-medium disabled:text-slate-800 transition-all">
+                        </div>
+                    </div>
+                    <div class="border-t border-slate-100 pt-4 mt-4">
+                        <label class="block text-[10px] font-bold text-indigo-500 uppercase mb-1">Architecture Criticality</label>
+                        <select id="fd-criticality" disabled class="w-full text-sm p-2 rounded border border-slate-300 disabled:appearance-none disabled:border-transparent disabled:bg-transparent disabled:p-0 disabled:font-bold disabled:text-indigo-700 transition-all">
+                            <option value="High">High (Tier 1)</option><option value="Medium">Medium (Tier 2)</option><option value="Low">Low (Tier 3)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-bold text-indigo-500 uppercase mb-1">Est. Effort (Days)</label>
+                        <input type="number" id="fd-effort" disabled class="w-full text-sm p-2 rounded border border-slate-300 disabled:border-transparent disabled:bg-transparent disabled:p-0 disabled:font-medium disabled:text-indigo-700 transition-all">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/js/details.js?v=5"></script>
+</body>
+</html>

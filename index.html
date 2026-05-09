@@ -140,22 +140,57 @@
             <!-- ========================================== -->
             <!-- PHASE 2: TECHNICAL BOARD (New)             -->
             <!-- ========================================== -->
-            <div id="phase2-board" class="hidden max-w-7xl mx-auto space-y-6">
+            <div id="phase2-board" class="hidden w-full flex-col max-w-7xl mx-auto space-y-6">
                 
-                <div id="tech-dashboard-view" class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden block">
-                    <div class="px-5 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-                        <h2 class="text-lg font-bold text-[#1a233a]">Phase 2: Technical IDR Status</h2>
+                <div class="grid grid-cols-2 md:grid-cols-6 gap-4 w-full">
+                    <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex flex-col items-center justify-center">
+                        <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1 text-center">Total Touchpoints</p>
+                        <h3 class="text-3xl font-black text-slate-800" id="tech-metric-total">0</h3>
+                    </div>
+                    <div class="bg-white rounded-xl border border-amber-200 shadow-sm p-4 flex flex-col items-center justify-center">
+                        <p class="text-[10px] font-bold text-amber-500 uppercase tracking-wider mb-1 text-center">Pending Workshop</p>
+                        <h3 class="text-3xl font-black text-amber-600" id="tech-metric-pending">0</h3>
+                    </div>
+                    <div class="bg-white rounded-xl border border-sky-200 shadow-sm p-4 flex flex-col items-center justify-center relative overflow-hidden">
+                        <div class="absolute top-0 left-0 w-full h-1 bg-sky-500"></div>
+                        <p class="text-[10px] font-bold text-sky-500 uppercase tracking-wider mb-1 text-center">Scheduled</p>
+                        <h3 class="text-3xl font-black text-sky-600" id="tech-metric-scheduled">0</h3>
                     </div>
                     
-                    <div class="overflow-x-auto">
+                    <div class="bg-white rounded-xl border border-purple-200 shadow-sm p-4 flex flex-col items-center justify-center relative overflow-hidden">
+                        <div class="absolute top-0 left-0 w-full h-1 bg-purple-500"></div>
+                        <p class="text-[10px] font-bold text-purple-500 uppercase tracking-wider mb-1 text-center">Rescheduled</p>
+                        <h3 class="text-3xl font-black text-purple-600" id="tech-metric-rescheduled">0</h3>
+                    </div>
+
+                    <div class="bg-white rounded-xl border border-indigo-200 shadow-sm p-4 flex flex-col items-center justify-center relative overflow-hidden">
+                        <div class="absolute top-0 left-0 w-full h-1 bg-indigo-500"></div>
+                        <p class="text-[10px] font-bold text-indigo-500 uppercase tracking-wider mb-1 text-center">In Progress</p>
+                        <h3 class="text-3xl font-black text-indigo-600" id="tech-metric-inprogress">0</h3>
+                    </div>
+                    <div class="bg-white rounded-xl border border-red-200 shadow-sm p-4 flex flex-col items-center justify-center relative overflow-hidden">
+                        <div class="absolute top-0 left-0 w-full h-1 bg-red-500"></div>
+                        <p class="text-[10px] font-bold text-red-500 uppercase tracking-wider mb-1 text-center">Delayed</p>
+                        <h3 class="text-3xl font-black text-red-600" id="tech-metric-delayed">0</h3>
+                    </div>
+                </div>
+                <div id="tech-dashboard-view" class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden w-full block">
+                    
+                    <div class="px-5 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                        <h2 class="text-lg font-bold text-[#1a233a]">Phase 2: Technical IDR Status</h2>
+                        <button id="btn-send-invites" onclick="triggerWorkshopInvites()" class="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold py-2 px-4 rounded shadow-sm transition-all flex items-center gap-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
+                            Send Tomorrow's Invites
+                        </button>
+                    </div>
+                    <div class="overflow-x-auto w-full">
                         <table class="w-full text-left border-collapse" id="technical-table">
                             <thead>
                                 <tr class="bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-500 uppercase tracking-wider">
                                     <th class="px-5 py-3">Touchpoint Name</th>
                                     <th class="px-5 py-3">Module</th>
-                                    <th class="px-5 py-3">Integration</th>
-                                    <th class="px-5 py-3">Source System</th>
-                                    <th class="px-5 py-3">Owner / Dept</th>
+                                    <th class="px-5 py-3">Integration Type</th>                                
+                                    <th class="px-5 py-3">Owner</th>
                                     <th class="px-5 py-3">Start Date</th>
                                     <th class="px-5 py-3">End Date</th>
                                     <th class="px-5 py-3">Status</th>
@@ -328,6 +363,6 @@
     <script type="module" src="/js/app-dashboard.js?v=16"></script>
     
     <!-- 2. THE NEW PHASE 2 & NAVIGATION SCRIPT -->
-    <script src="js/phase2_technical.js?v=6"></script>
+    <script src="js/phase2_technical.js?v=16"></script>
 </body>
 </html>

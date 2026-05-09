@@ -68,7 +68,6 @@ def generate_and_send_daily_summary():
             </body>
         </html>
         """
-
         msg = MIMEMultipart("alternative")
         msg["Subject"] = f"📊 SDGNext Daily Summary - {today_str}"
         msg["From"] = SMTP_USERNAME

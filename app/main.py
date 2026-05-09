@@ -2,18 +2,20 @@ import os
 from fastapi import FastAPI, BackgroundTasks, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse,StreamingResponse
 from apscheduler.schedulers.background import BackgroundScheduler
 from contextlib import asynccontextmanager
 from app.core.database import engine, Base, SessionLocal
 from app.models.domain import TeamMaster
 from app.core.mom_engine import generate_and_send_mom
-from app.models.domain import IntegrationTouchpoint, IDRFunctional, IDRTechnical
-from app.core.database import SessionLocal
+from app.models.domain import IntegrationTouchpoint, IDRFunctional, IDRTechnical, IDRActionLog
 # Import our new architecture
 from app.api.routes import upload, projects, tasks
 from app.core.email_engine import generate_and_send_daily_summary, generate_and_send_follow_ups
 import mimetypes
+from datetime import date
+from app.workshop_mailer import send_workshop_invites
+from app.wud_engine import create_wud_word
 
 # Force Windows/Python to recognize .js files correctly
 mimetypes.add_type('application/javascript', '.js')
@@ -94,132 +96,226 @@ async def read_index():
 
 @app.get("/api/phase2/dashboard")
 def get_phase2_dashboard():
-    """Fetches real data for the Phase 2 Technical IDR Board."""
+    """Fetches real data for the Phase 2 Technical IDR Board with Dynamic Date Logic."""
     db = SessionLocal()
     try:
-        # 1. Query the DB: Use idr_status and ilike() for safe, case-insensitive matching
         results = db.query(
             IntegrationTouchpoint, IDRFunctional, IDRTechnical
         ).join(
             IDRFunctional, IntegrationTouchpoint.id == IDRFunctional.touchpoint_id
         ).outerjoin(
             IDRTechnical, IntegrationTouchpoint.id == IDRTechnical.touchpoint_id
-        ).filter(
-            IDRFunctional.idr_status.ilike("%Signed-Off%")
-        ).all()
+        ).filter(IDRFunctional.idr_status.ilike("%Signed-Off%")).all()
 
-        # 2. Format the data for the Javascript frontend
         dashboard_data = []
         for tp, func, tech in results:
-
-            # 1. Grab Phase 2 source (if it was manually overridden)
-            tech_source = tech.source_system if tech and tech.source_system else None
             
-            # 2. Grab Phase 1 source using getattr (to prevent crashes if column name varies)
-            # *Note: If your Phase 1 database column is named something else like 'source', 
-            # change "source_system" below to match your database!
-            func_source = getattr(func, "source_system", getattr(func, "source", "-"))
-            
-            # 3. If Tech source is empty or a dash, inherit the Phase 1 source!
-            final_source = tech_source if tech_source and tech_source.strip() not in ["", "-"] else func_source
             tech_owner = getattr(func, "owner", "Unassigned")
             dept = getattr(func, "business_department", "")
-            
             display_owner = f"{tech_owner} ({dept})" if dept else tech_owner
-            # ------------------------------------------------
-            integration_type = tech.integration_type if tech else "unassigned"
-            tech_status = tech.tech_status if tech else "Pending Workshop"
+
+            integration_type = tech.integration_type if tech and tech.integration_type else "unassigned"
             
-            # Determine color pill based on status
-            status_class = "bg-amber-100 text-amber-700 border-amber-200"
+            # --- INTELLIGENT STATUS CALCULATION ---
+            tech_status = tech.tech_status if tech and tech.tech_status else "Auto"
+
+            if tech and tech.start_date and tech.end_date and tech_status not in ["Completed", "Rescheduled"]:
+                today = date.today()
+                # Safely parse dates from DB
+                start_d = tech.start_date if isinstance(tech.start_date, date) else date.fromisoformat(str(tech.start_date))
+                end_d = tech.end_date if isinstance(tech.end_date, date) else date.fromisoformat(str(tech.end_date))
+                
+                if today > end_d:
+                    tech_status = "Delayed"
+                elif today < start_d:
+                    tech_status = "Scheduled"
+                else:
+                    tech_status = "In Progress"
+            elif tech_status not in ["Completed", "Rescheduled"]:
+                tech_status = "Pending Workshop"
+
+            # --- DYNAMIC COLOR MAPPING ---
+            status_class = "bg-amber-100 text-amber-700 border-amber-200" # Pending Workshop
             if tech_status == "In Progress":
                 status_class = "bg-blue-100 text-blue-700 border-blue-200"
-            elif tech_status == "Signed-Off":
+            elif tech_status == "Scheduled":
+                status_class = "bg-sky-100 text-sky-700 border-sky-200"
+            elif tech_status == "Delayed":
+                status_class = "bg-red-100 text-red-700 border-red-200"
+            elif tech_status == "Completed":
                 status_class = "bg-emerald-100 text-emerald-700 border-emerald-200"
+            elif tech_status == "Rescheduled":
+                status_class = "bg-purple-100 text-purple-700 border-purple-200"
 
             dashboard_data.append({
                 "id": tp.id,
                 "name": tp.name,
                 "module": func.module or "Unknown",
-                "phase1Status": func.idr_status, # Updated to idr_status
                 "integration": integration_type,
-                "source": final_source,
-                "owner": display_owner,
-                "start": str(tech.start_date) if tech and tech.start_date else "-",
-                "end": str(tech.end_date) if tech and tech.end_date else "-",
+                "owner": display_owner, 
+                "start": str(tech.start_date) if tech and tech.start_date else "",
+                "end": str(tech.end_date) if tech and tech.end_date else "",
                 "techStatus": tech_status,
                 "statusClass": status_class,
-                # --- NEW: Send the JSON details to the frontend ---
                 "techDetails": tech.technical_details if tech and tech.technical_details else {}
             })
             
         return {"data": dashboard_data}
-
-    except Exception as e:
-        print(f"Error fetching Phase 2 data: {e}")
-        return {"data": []}
     finally:
         db.close()
 
+
 @app.put("/api/phase2/update/{touchpoint_id}")
 async def update_tech_idr(touchpoint_id: int, request: Request):
-    """Saves the Integration Type, Start Date, and End Date from the UI (Upsert Pattern)."""
+    """Saves the Integration Type, Dates, and Manual Status Overrides."""
     db = SessionLocal()
     try:
         data = await request.json()
-        print(f"--- SAVING PHASE 2 DATA FOR TOUCHPOINT {touchpoint_id} ---")
-        print(f"Payload Received: {data}")
-        
-        # 1. Look for the existing row
         tech = db.query(IDRTechnical).filter(IDRTechnical.touchpoint_id == touchpoint_id).first()
         
-        # Clean the dates safely
         start_val = data.get("start")
         end_val = data.get("end")
         clean_start = start_val if start_val and start_val.strip() != "" else None
         clean_end = end_val if end_val and end_val.strip() != "" else None
         
+        # If user explicitly selected Completed/Rescheduled, save it. Otherwise revert to Auto.
+        incoming_status = data.get("status", "Auto")
+        new_status = incoming_status if incoming_status in ["Completed", "Rescheduled"] else "Auto"
+        
         if tech:
-            # 2A. ROW EXISTS: Update it
             tech.integration_type = data.get("integration")
             tech.start_date = clean_start
             tech.end_date = clean_end
-            
-            # --- NEW: Save the Technical Details JSON ---
+            tech.tech_status = new_status
             if "technical_details" in data:
                 tech.technical_details = data.get("technical_details")
-            # ------------------------------------------
-
-            if tech.start_date and tech.tech_status == "Pending Workshop":
-                tech.tech_status = "In Progress"
-                
-            print("Existing row found. Updating data...")
-            
         else:
-            # 2B. ROW DOES NOT EXIST: Create it instantly!
-            print("Row not found in idr_technical. Creating a new one on the fly...")
-            new_status = "In Progress" if clean_start else "Pending Workshop"
-            
             tech = IDRTechnical(
                 touchpoint_id=touchpoint_id,
                 integration_type=data.get("integration"),
                 start_date=clean_start,
                 end_date=clean_end,
                 tech_status=new_status,
-                
-                # --- NEW: Save the Technical Details JSON on creation ---
                 technical_details=data.get("technical_details", {})
             )
             db.add(tech)
 
-        # 3. Save to Postgres
         db.commit()
-        print("Successfully saved to database!")
         return {"status": "success", "message": "Technical details updated"}
-        
     except Exception as e:
         db.rollback()
-        print(f"CRITICAL ERROR SAVING DATA: {e}")
         return {"status": "error", "message": str(e)}
     finally:
         db.close()
+@app.post("/api/phase2/trigger-invites")
+def trigger_manual_invites():
+    """Manually triggers the workshop invite emails for tomorrow."""
+    result = send_workshop_invites()
+    return result
+# 1. Serve the new HTML Page
+@app.get("/details")
+def serve_details_page():
+    """Serves the new standalone Details HTML page."""
+    # Note: If your HTML files are in a specific folder like 'static' or 'templates', 
+    # update this path (e.g., 'static/details.html')
+    return FileResponse("details.html")
+
+# 2. API to fetch a single Touchpoint's data
+@app.get("/api/phase2/touchpoint/{tp_id}")
+def get_single_touchpoint(tp_id: int):
+    """Fetches full details for a single integration touchpoint."""
+    db = SessionLocal()
+    try:
+        # Use outerjoin for Technical in case it hasn't been saved yet
+        result = db.query(
+            IntegrationTouchpoint, IDRFunctional, IDRTechnical
+        ).join(
+            IDRFunctional, IntegrationTouchpoint.id == IDRFunctional.touchpoint_id
+        ).outerjoin(
+            IDRTechnical, IntegrationTouchpoint.id == IDRTechnical.touchpoint_id
+        ).filter(
+            IntegrationTouchpoint.id == tp_id
+        ).first()
+
+        if not result:
+            return {"status": "error", "message": "Touchpoint not found"}
+
+        tp, func, tech = result
+        
+        tech_owner = getattr(func, "owner", "Unassigned")
+        tech_status = tech.tech_status if tech and tech.tech_status else "Auto"
+        integration_type = tech.integration_type if tech and tech.integration_type else "unassigned"
+
+        history_logs = db.query(IDRActionLog).filter(IDRActionLog.touchpoint_id == tp_id).order_by(IDRActionLog.created_at.desc()).all()
+        
+        formatted_history = ""
+        for log in history_logs:
+            if log.open_pointer_history:
+                date_str = log.created_at.strftime("%b %d, %Y") if log.created_at else "Unknown Date"
+                formatted_history += f"[{date_str}] {log.open_pointer_history}\n\n"
+
+        raw_signoff = getattr(func, "idr_signoff_date", None)
+        formatted_signoff = str(raw_signoff) if raw_signoff else "Pending"
+
+        return {
+            "status": "success",
+            "data": {
+                "id": tp.id,
+                "name": tp.name,
+                "module": func.module or "Unknown",
+                "owner": tech_owner,
+                "integration": integration_type,
+                
+                "source": getattr(func, "source_system", "-"),
+                "target": getattr(func, "target_system", "-"),
+                
+                # --- EXACT DATABASE COLUMN MAPPING ---
+                # Using a fallback to lowercase 'input' just in case your model is strictly lowercase
+                "input": getattr(func, "Input", getattr(func, "inputs", "-")), 
+                "output": getattr(func, "expected_output", "-"),          
+                "signoff": formatted_signoff,                    
+                # -------------------------------------
+                
+                "business_flow": getattr(func, "business_flow", "-"),
+                "mod_owner": getattr(func, "module_owner", "-"),
+                "tech_owner_name": getattr(func, "technical_owner", "-"),
+                "fallback": getattr(func, "business_fallback", "-"),
+                "business_purpose": getattr(func, "business_req", "-"),
+                
+                "start": str(tech.start_date) if tech and tech.start_date else "",
+                "end": str(tech.end_date) if tech and tech.end_date else "",
+                "techStatus": tech_status,
+                "techDetails": tech.technical_details if tech and tech.technical_details else {},
+                "history_log": formatted_history.strip()
+            }
+        }
+    finally:
+        db.close()
+@app.get("/api/phase2/touchpoint/{tp_id}/generate-wud")
+def generate_wud_word_endpoint(tp_id: int):
+    """Generates a Word Work Unit Document and returns it."""
+    
+    data_response = get_single_touchpoint(tp_id)
+    if data_response.get("status") != "success":
+        raise HTTPException(status_code=404, detail="Could not fetch data for WUD")
+    
+    tp_data = data_response["data"]
+    
+    if tp_data.get("integration", "").lower() != "api":
+        raise HTTPException(status_code=400, detail="WUD Generation is currently only supported for API Integration Types.")
+
+    try:
+        # Call the new Word generator
+        word_file = create_wud_word(tp_data)
+        safe_name = tp_data.get("name", "Touchpoint").replace(" ", "_")
+        
+        # Stream the file with the exact MIME type for .docx
+        return StreamingResponse(
+            word_file, 
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document", 
+            headers={"Content-Disposition": f"attachment; filename={safe_name}_WUD.docx"} # <-- Changed to .docx
+        )
+        
+    except Exception as e:
+        print(f"Backend Word Generation Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
