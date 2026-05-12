@@ -89,12 +89,35 @@ def generate_and_send_daily_summary():
 
 
 def generate_and_send_follow_ups():
-    """Finds pending items, generates AI executive intro, and conditionally attaches a CSV sheet."""
+    """Finds pending items, generates AI executive intro, and conditionally attaches a CSV sheet.
+
+    Post-identity-refactor behaviour:
+    - pending_with is now an INDIVIDUAL'S NAME (not a team label).
+    - We resolve that name -> (person email, department email) via team_master JOIN
+      department_master. The person is in To, their dept group in CC.
+    - If a name can't be resolved (unmapped legacy data), we fall back to the
+      configured RECIPIENTS list so the email isn't lost during the migration
+      window.
+    """
     db = SessionLocal()
     try:
-        # 1. Get TEAM_EMAILS dynamically
-        master_teams = db.query(TeamMaster).filter(TeamMaster.is_active == True).all()
-        TEAM_EMAILS = {team.team_name: team.contact_email for team in master_teams}
+        # 1. Build a name -> (person_email, dept_email, dept_name) lookup.
+        # Joining once is cheaper than N lookups inside the loop.
+        from app.models.domain import DepartmentMaster
+        identity_rows = db.query(TeamMaster, DepartmentMaster).join(
+            DepartmentMaster, TeamMaster.dept_id == DepartmentMaster.dept_id
+        ).filter(TeamMaster.is_active == True).all()
+
+        # case-insensitive lookup on name
+        person_lookup = {
+            m.full_name.strip().lower(): {
+                "person_email": m.email,
+                "dept_email": d.department_email,
+                "dept_name": d.department_name,
+                "display_name": m.full_name,
+            }
+            for m, d in identity_rows
+        }
 
         # 2. Fetch items that are Pending and assigned
         stuck_items = db.query(IDRFunctional, IntegrationTouchpoint).join(
@@ -109,13 +132,16 @@ def generate_and_send_follow_ups():
             print(f"[{datetime.now()}] No pending items found. Skipping follow-ups.")
             return
 
-        # 3. Group the items by team and build clean lists
+        # 3. Group items by the person they're pending with (case-insensitive)
         grouped_tasks = {}
         for func, tp in stuck_items:
-            team = func.pending_with
-            if team not in grouped_tasks:
-                grouped_tasks[team] = []
-            
+            person = (func.pending_with or "").strip()
+            if not person:
+                continue
+            key = person.lower()
+            if key not in grouped_tasks:
+                grouped_tasks[key] = {"display": person, "items": []}
+
             # Fetch ONLY the open pointers from history
             history_entries = db.query(IDRActionLog).filter(
                 IDRActionLog.touchpoint_id == tp.id
@@ -129,36 +155,52 @@ def generate_and_send_follow_ups():
                 for record in history_entries:
                     date_str = record.created_at.strftime("%b %d") if record.created_at else "Unknown Date"
                     pointer = record.open_pointer_history.strip() if record.open_pointer_history else ""
-                    
+
                     if pointer:
                         pointers_html += f"<li style='margin-bottom: 6px;'><strong>[{date_str}]</strong> {pointer}</li>"
                         pointers_plain += f"[{date_str}] {pointer}\n"
                         has_pointers = True
 
             pointers_html += "</ul>"
-            
+
             if not has_pointers:
                 fallback = func.open_pointers or 'No specific action items.'
                 pointers_html = f"<em style='color: #64748b;'>{fallback}</em>"
                 pointers_plain = fallback
 
-            grouped_tasks[team].append({
+            grouped_tasks[key]["items"].append({
                 "touchpoint": tp.name or "Unnamed",
                 "module": func.module or "-",
                 "pointers": pointers_html,
                 "pointers_plain": pointers_plain.strip(),
-                "ai_summary": pointers_plain 
+                "ai_summary": pointers_plain,
             })
 
         # 4. Send the emails with THRESHOLD LOGIC (> 2 items = CSV Attachment)
-        for team, items in grouped_tasks.items():
-            recipient_email = TEAM_EMAILS.get(team)
-            if not recipient_email:
-                continue
+        for person_key, group in grouped_tasks.items():
+            person_display = group["display"]
+            items = group["items"]
+
+            # Resolve to (To, Cc) emails. Unmapped names -> fallback to RECIPIENTS.
+            identity = person_lookup.get(person_key)
+            if identity:
+                to_email = identity["person_email"]
+                cc_email = identity["dept_email"]
+                dept_name = identity["dept_name"]
+                greet_name = identity["display_name"]
+            else:
+                # Fallback: an unmapped legacy name. Don't drop the email — send to
+                # the global RECIPIENTS list so somebody sees it.
+                print(f"[{datetime.now()}] WARNING: pending_with name '{person_display}' "
+                      f"not found in team_master. Falling back to global RECIPIENTS.")
+                to_email = RECIPIENTS[0] if RECIPIENTS else SMTP_USERNAME
+                cc_email = None
+                dept_name = "Unassigned"
+                greet_name = person_display
 
             # Generate the Stakeholder Paragraph
-            executive_narrative = generate_stakeholder_intro(team, items)
-            
+            executive_narrative = generate_stakeholder_intro(greet_name, items)
+
             csv_data = None
             cards_html = ""
 
@@ -229,22 +271,33 @@ def generate_and_send_follow_ups():
             msg = MIMEMultipart("mixed")
             msg["Subject"] = f"⚠️ Action Required: {len(items)} Items Pending Your Review"
             msg["From"] = SMTP_USERNAME
-            msg["To"] = recipient_email
+            msg["To"] = to_email
+            if cc_email and cc_email.lower() != (to_email or "").lower():
+                msg["Cc"] = cc_email
 
             msg.attach(MIMEText(html_content, "html"))
 
             if csv_data:
-                safe_team_name = team.replace(" ", "_").replace("/", "_")
+                safe_name = (person_display or "person").replace(" ", "_").replace("/", "_")
                 attachment = MIMEApplication(csv_data.encode('utf-8'))
-                attachment.add_header('Content-Disposition', 'attachment', filename=f"{safe_team_name}_Pending_Actions.csv")
+                attachment.add_header(
+                    'Content-Disposition', 'attachment',
+                    filename=f"{safe_name}_Pending_Actions.csv"
+                )
                 msg.attach(attachment)
+
+            # Build the actual delivery list (To + CC; smtplib needs all envelope recipients)
+            envelope_recipients = [to_email]
+            if cc_email and cc_email.lower() != (to_email or "").lower():
+                envelope_recipients.append(cc_email)
 
             with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
                 server.starttls()
                 server.login(SMTP_USERNAME, SMTP_PASSWORD)
-                server.sendmail(SMTP_USERNAME, recipient_email, msg.as_string())
-                
-            print(f"[{datetime.now()}] Follow-up sent to {team} for {len(items)} items.")
+                server.sendmail(SMTP_USERNAME, envelope_recipients, msg.as_string())
+
+            print(f"[{datetime.now()}] Follow-up sent to {person_display} "
+                  f"({dept_name}) for {len(items)} items.")
 
     except Exception as e:
         print(f"[{datetime.now()}] Failed to send follow-ups: {e}")

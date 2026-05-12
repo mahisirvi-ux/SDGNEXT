@@ -4,7 +4,7 @@ from email.mime.text import MIMEText
 from datetime import date, timedelta, datetime
 from collections import defaultdict
 from app.core.database import SessionLocal
-from app.models.domain import IntegrationTouchpoint, IDRFunctional, IDRTechnical, TeamMaster
+from app.models.domain import IntegrationTouchpoint, IDRFunctional, IDRTechnical, TeamMaster, DepartmentMaster
 
 # --- CONFIGURATION (Re-using your Phase 1 Setup) ---
 SMTP_SERVER = "smtp.gmail.com"  
@@ -124,9 +124,20 @@ def send_workshop_invites():
     
     db = SessionLocal()
     try:
-        # 1. Get TEAM_EMAILS dynamically from TeamMaster (Just like Phase 1!)
-        master_teams = db.query(TeamMaster).filter(TeamMaster.is_active == True).all()
-        TEAM_EMAILS = {team.team_name: team.contact_email for team in master_teams}
+        # 1. Build a name -> (person_email, dept_email, dept_name) lookup.
+        # Owners on Phase 2 workshops are now individuals (post-identity-refactor).
+        identity_rows = db.query(TeamMaster, DepartmentMaster).join(
+            DepartmentMaster, TeamMaster.dept_id == DepartmentMaster.dept_id
+        ).filter(TeamMaster.is_active == True).all()
+        person_lookup = {
+            m.full_name.strip().lower(): {
+                "person_email": m.email,
+                "dept_email": d.department_email,
+                "dept_name": d.department_name,
+                "display_name": m.full_name,
+            }
+            for m, d in identity_rows
+        }
 
         # 2. Find workshops for tomorrow
         tomorrow = date.today() + timedelta(days=1)
@@ -152,10 +163,14 @@ def send_workshop_invites():
             print(f"[{datetime.now()}] No workshops scheduled for {tomorrow_str}.")
             return {"status": "success", "emails_sent": 0, "message": f"No workshops scheduled for {tomorrow_str}."}
 
-        # 3. Group workshops by team
-        workshops_by_owner = defaultdict(list)
+        # 3. Group workshops by owner (now an individual's name)
+        workshops_by_owner = {}
         for tp, func, tech in results:
-            owner = getattr(func, "owner", "Unassigned Team")
+            owner_raw = (getattr(func, "owner", None) or "Unassigned Team").strip()
+            key = owner_raw.lower()
+            if key not in workshops_by_owner:
+                workshops_by_owner[key] = {"display": owner_raw, "items": []}
+
             integration = tech.integration_type.lower() if tech.integration_type else "unassigned"
 
             # Format the time window for the card header (e.g. "10:30 AM – 11:30 AM")
@@ -168,7 +183,7 @@ def send_workshop_invites():
                 else:
                     time_window = start_fmt
 
-            workshops_by_owner[owner].append({
+            workshops_by_owner[key]["items"].append({
                 "name": tp.name,
                 "module": func.module or "-",
                 "integration": integration.upper(),
@@ -178,11 +193,21 @@ def send_workshop_invites():
 
         # 4. Generate and send emails
         emails_sent = 0
-        for team, items in workshops_by_owner.items():
-            recipient_email = TEAM_EMAILS.get(team)
-            
-            if not recipient_email:
-                print(f"[{datetime.now()}] ⚠️ Skipping {team} - No email found in TeamMaster.")
+        for person_key, group in workshops_by_owner.items():
+            person_display = group["display"]
+            items = group["items"]
+
+            identity = person_lookup.get(person_key)
+            if identity:
+                to_email = identity["person_email"]
+                cc_email = identity["dept_email"]
+                dept_name = identity["dept_name"]
+                greet_name = identity["display_name"]
+            else:
+                # Unmapped owner — skip with a clear warning rather than mis-routing.
+                # Workshop invites are sensitive (calendar implication); we'd rather
+                # the operator notice the gap than silently send to a fallback inbox.
+                print(f"[{datetime.now()}] ⚠️ Skipping owner '{person_display}' — not in team_master.")
                 continue
 
             # Generate the specific touchpoint HTML blocks
@@ -222,7 +247,7 @@ def send_workshop_invites():
                             <h2 style="margin: 0 0 20px 0; color: #0f172a; font-size: 22px;">Action Required: Workshop Tomorrow</h2>
                             
                             <div style="color: #334155; font-size: 15px; line-height: 1.6; margin-bottom: 30px;">
-                                Hello <strong>{team}</strong> Team,<br><br>
+                                Hello <strong>{greet_name}</strong>{f' ({dept_name})' if dept_name else ''},<br><br>
                                 This is an automated briefing to confirm your Technical Architecture Workshop scheduled for tomorrow, <strong>{tomorrow_str}</strong>. To ensure a productive session, please review the touchpoints below and come prepared with the listed architectural prerequisites.
                             </div>
                             
@@ -241,16 +266,23 @@ def send_workshop_invites():
             msg = MIMEMultipart("alternative")
             msg["Subject"] = f"📅 Action Required: Architecture Workshop Tomorrow ({tomorrow_str})"
             msg["From"] = SMTP_USERNAME
-            msg["To"] = recipient_email
+            msg["To"] = to_email
+            if cc_email and cc_email.lower() != (to_email or "").lower():
+                msg["Cc"] = cc_email
 
             msg.attach(MIMEText(html_content, "html"))
+
+            envelope_recipients = [to_email]
+            if cc_email and cc_email.lower() != (to_email or "").lower():
+                envelope_recipients.append(cc_email)
 
             with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
                 server.starttls()
                 server.login(SMTP_USERNAME, SMTP_PASSWORD)
-                server.sendmail(SMTP_USERNAME, recipient_email, msg.as_string())
-                
-            print(f"[{datetime.now()}] ✅ Workshop Invite sent to {team} ({recipient_email}).")
+                server.sendmail(SMTP_USERNAME, envelope_recipients, msg.as_string())
+
+            print(f"[{datetime.now()}] ✅ Workshop Invite sent to {person_display} "
+                  f"({dept_name}) at {to_email}.")
             emails_sent += 1
 
         return {"status": "success", "emails_sent": emails_sent, "message": "Invites sent successfully."}

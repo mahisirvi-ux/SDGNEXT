@@ -7,7 +7,7 @@ window.currentEditingTechId = null;
 // ==========================================
 // MASTER NAVIGATION LOGIC (Sidebar)
 // ==========================================
-function switchPhase(phaseNumber) {
+/*function switchPhase(phaseNumber) {
     document.getElementById('phase1-board').classList.add('hidden');
     document.getElementById('phase1-board').classList.remove('block');
     document.getElementById('phase2-board').classList.add('hidden');
@@ -34,14 +34,34 @@ function switchPhase(phaseNumber) {
         document.getElementById('phase2-board').classList.add('block');
         document.getElementById('nav-2').classList.remove('text-slate-400', 'hover:text-white', 'hover:bg-slate-700');
         document.getElementById('nav-2').classList.add('bg-pink-500', 'text-white');
-        
+
         // Ensure detail view is hidden and table is showing when navigating
         document.getElementById('tech-detail-view').classList.add('hidden');
         document.getElementById('tech-detail-view').classList.remove('block');
         document.getElementById('tech-dashboard-view').classList.remove('hidden');
         document.getElementById('tech-dashboard-view').classList.add('block');
 
-        populateTechTable(); 
+        // --- CLEAR STALE DATA FROM PREVIOUS PROJECT ---
+        // Wipe the cached map and visible rows so no other project's data leaks through
+        window.phase2DataMap = {};
+        const tbody = document.getElementById('tech-table-body');
+        if (tbody) {
+            tbody.innerHTML = '<tr><td colspan="9" class="px-5 py-8 text-center text-sm font-medium text-slate-400">Loading project data...</td></tr>';
+        }
+        // Reset KPI counters to zero while loading
+        ['tech-metric-total','tech-metric-pending','tech-metric-scheduled',
+         'tech-metric-rescheduled','tech-metric-inprogress','tech-metric-delayed'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.innerText = '0';
+        });
+
+        // Sync current project from the selector (single source of truth)
+        const selector = document.getElementById('projectSelector');
+        if (selector && selector.value) {
+            window.currentProjectName = selector.value;
+        }
+
+        populateTechTable();
     }
     else if (phaseNumber === 3) {
         document.getElementById('phase3-board').classList.remove('hidden');
@@ -49,7 +69,7 @@ function switchPhase(phaseNumber) {
         document.getElementById('nav-3').classList.remove('text-slate-400', 'hover:text-white', 'hover:bg-slate-700');
         document.getElementById('nav-3').classList.add('bg-pink-500', 'text-white');
     }
-}
+} */
 
 // ==========================================
 // PHASE 2: REAL DATA FETCHING & RENDERING
@@ -60,7 +80,10 @@ async function populateTechTable() {
     
     tbody.innerHTML = '<tr><td colspan="9" class="px-5 py-8 text-center text-sm font-medium text-slate-400">Loading live data from database...</td></tr>';
     try {
-        const response = await fetch('/api/phase2/dashboard?t=' + new Date().getTime());
+        // Read the current project from the global state (set by Phase 1's project selector)
+        // Read the current project from global state (set by app-dashboard.js on project switch)
+        const currentProject = window.currentProjectName || document.getElementById('projectSelector')?.value || '';
+        const response = await fetch(`/api/phase2/dashboard?project=${encodeURIComponent(currentProject)}&t=${new Date().getTime()}`);
         const result = await response.json();
         const eligibleItems = result.data || [];
 

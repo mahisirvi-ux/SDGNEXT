@@ -10,6 +10,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Load data if a project is auto-selected
     if (projectSelector.value) {
+        window.currentProjectName = projectSelector.value;
         await loadData(projectSelector.value);
     } else {
         showEmptyState();
@@ -17,12 +18,20 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Listeners
     projectSelector.addEventListener('change', (e) => {
-        if (e.target.value) {
-            if(typeof window.closeFlyout === 'function') window.closeFlyout();
-            loadData(e.target.value);
-        } else {
-            showEmptyState();
+    if (e.target.value) {
+        window.currentProjectName = e.target.value;
+        if(typeof window.closeFlyout === 'function') window.closeFlyout();
+        loadData(e.target.value);
+        // If Phase 2 board is currently visible, refresh it for the new project
+        if (typeof populateTechTable === 'function') {
+            const phase2Board = document.getElementById('phase2-board');
+            if (phase2Board && !phase2Board.classList.contains('hidden')) {
+                populateTechTable();
+            }
         }
+    } else {
+        showEmptyState();
+    }
     });
 
     fileInput.addEventListener('change', async (e) => {
@@ -54,46 +63,78 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         fileInput.value = '';
     });
-    const teamInput = document.getElementById('teamLovInput');
-    
-    // --- MASTER LOV UPLOAD LISTENER ---
-    if (teamInput) {
-        teamInput.addEventListener('change', async (e) => {
+    // ==========================================
+    // IDENTITY MASTER UPLOADS (Departments + Team Members)
+    // ==========================================
+    // Generic uploader that posts a file to a target URL, shows status, reloads on success.
+    async function uploadIdentityCsv(file, url, label) {
+        const statusText = document.getElementById('lastUpdatedText');
+        if (statusText) statusText.innerText = `Uploading ${label}...`;
+
+        const formData = new FormData();
+        formData.append('file', file);
+
+        try {
+            const response = await fetch(url, { method: 'POST', body: formData });
+            const result = await response.json();
+
+            if (response.ok) {
+                // Build a friendly recap from the response
+                let summary = result.message || `${label} uploaded.`;
+                if (result.skipped_rows && Array.isArray(result.skipped_rows) && result.skipped_rows.length) {
+                    summary += `\n\n⚠️ ${result.skipped_rows.length} row(s) were skipped.`;
+                    const first3 = result.skipped_rows.slice(0, 3).map(r => r.reason || 'invalid').join('\n  - ');
+                    summary += `\n  - ${first3}`;
+                }
+                alert(summary);
+                if (statusText) statusText.innerText = `${label} updated.`;
+
+                // Reload so all dropdowns rebuild against fresh data
+                setTimeout(() => window.location.reload(), 1000);
+            } else {
+                alert(`${label} upload failed: ${result.detail || result.message || 'unknown error'}`);
+                if (statusText) statusText.innerText = `${label} upload failed.`;
+            }
+        } catch (err) {
+            console.error(`${label} upload error:`, err);
+            alert(`Network error during ${label.toLowerCase()} upload.`);
+        }
+    }
+
+    // Departments
+    const departmentsInput = document.getElementById('departmentsCsvInput');
+    if (departmentsInput) {
+        departmentsInput.addEventListener('change', async (e) => {
             const file = e.target.files[0];
             if (!file) return;
+            await uploadIdentityCsv(file, '/upload-departments', 'Departments');
+            departmentsInput.value = '';
+        });
+    }
 
-            const statusText = document.getElementById('lastUpdatedText');
-            if(statusText) statusText.innerText = `Uploading Team Directory...`;
+    // Team Members
+    const teamMembersInput = document.getElementById('teamMembersCsvInput');
+    if (teamMembersInput) {
+        teamMembersInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            await uploadIdentityCsv(file, '/upload-team-members', 'Team Members');
+            teamMembersInput.value = '';
+        });
+    }
 
-            const formData = new FormData();
-            formData.append('file', file);
-
-            try {
-                const response = await fetch(`/upload-teams`, {
-                    method: 'POST',
-                    body: formData
-                });
-
-                const result = await response.json();
-
-                if (response.ok) {
-                    alert(result.message); // Show success stats
-                    if(statusText) statusText.innerText = `Teams Updated!`;
-                    
-                    // NEW: Automatically reload the page to rebuild all dropdowns with fresh DB data
-                    setTimeout(() => {
-                        window.location.reload(); 
-                    }, 1000);
-                    
-                } else {
-                    alert(`Upload failed: ${result.detail}`);
-                    if(statusText) statusText.innerText = `Upload Failed`;
-                }
-            } catch (error) {
-                console.error("Upload error:", error);
-                alert("Could not connect to backend to upload teams.");
-            }
-            teamInput.value = ''; // Reset input
+    // Legacy teamLovInput (the old "Manage Teams" file input). Still in the DOM
+    // for backward compat with any third-party scripts; surfaces a clear message
+    // explaining the new flow if it ever fires.
+    const legacyTeamInput = document.getElementById('teamLovInput');
+    if (legacyTeamInput) {
+        legacyTeamInput.addEventListener('change', () => {
+            alert(
+                "The 'Manage Teams' upload has been replaced.\n\n" +
+                "Use 'Manage Identities' → Upload Departments first, then Upload Team Members.\n" +
+                "If you need a starting point, click 'Download Migration Template'."
+            );
+            legacyTeamInput.value = '';
         });
     }
 });
@@ -130,17 +171,35 @@ async function populateProjectsDropdown(selector) {
 async function loadPendingOptions() {
     try {
         const response = await fetch('/pending-options');
-        if (response.ok) {
-            const options = await response.json();
-            const select = document.getElementById('log-pending');
-            if (select) {
-                let html = '<option value="">-- Pending With (None) --</option>';
+        if (!response.ok) return;
+
+        const options = await response.json();
+        const select = document.getElementById('log-pending');
+        if (!select) return;
+
+        let html = '<option value="">-- Pending With (None) --</option>';
+
+        if (Array.isArray(options) && options.length > 0) {
+            // Detect response shape: new endpoint returns rich objects with .display.
+            // Legacy fallback: a plain array of strings.
+            const isRich = typeof options[0] === 'object' && options[0] !== null && 'display' in options[0];
+
+            if (isRich) {
                 options.forEach(opt => {
-                    html += `<option value="${opt}">${opt}</option>`;
+                    const val = (opt.display || opt.full_name || '').replace(/"/g, '&quot;');
+                    const label = (opt.display_with_dept || opt.display || '').replace(/</g, '&lt;');
+                    html += `<option value="${val}">${label}</option>`;
                 });
-                select.innerHTML = html;
+            } else {
+                // Legacy: plain strings
+                options.forEach(opt => {
+                    const safe = String(opt).replace(/"/g, '&quot;');
+                    html += `<option value="${safe}">${safe}</option>`;
+                });
             }
         }
+
+        select.innerHTML = html;
     } catch (error) {
         console.error("Error fetching pending options:", error);
     }
@@ -244,7 +303,15 @@ window.renderPhase1Dashboard = function() {
         emptyState.classList.add('hidden');
         emptyState.classList.remove('flex');
     }
-    if(board) board.classList.remove('hidden');
+
+    // Only un-hide phase1-board if Phase 1 is the active tab. If user is on
+    // Phase 2 or 3, we still want the data fetched & cached, but the board
+    // itself must stay hidden until the user navigates back to Phase 1.
+    const phase2Active = !document.getElementById('phase2-board')?.classList.contains('hidden');
+    const phase3Active = !document.getElementById('phase3-board')?.classList.contains('hidden');
+    if (board && !phase2Active && !phase3Active) {
+        board.classList.remove('hidden');
+    }
 
     // KPI Summary Cards
     const total = globalTrackerData.length;
@@ -328,11 +395,14 @@ window.openFlyout = function(dataIndex) {
     setVal('flyout-target', data.target_system || '-');
     setVal('flyout-flow', data.business_flow || '-');
 
-    setVal('flyout-owner', data.owner || 'Unassigned');
+    // Owner: prefer the enriched 'Name (Department)' from the new identity model,
+    // fall back to raw owner if backend predates the refactor.
+    setVal('flyout-owner', data.owner_display || data.owner || 'Unassigned');
     setVal('flyout-dept', data.business_department || '-');
     setVal('flyout-inputs', data.inputs || '-');
     setVal('flyout-outputs', data.expected_output || '-');
-    setVal('flyout-pending', data.pending_with || 'None');
+    // Pending: same enrichment treatment so the badge reads 'Rahul (CBS)'.
+    setVal('flyout-pending', data.pending_with_display || data.pending_with || 'None');
     setVal('flyout-signoff', data.idr_signoff_date || 'Pending');
 
     const statusEl = document.getElementById('flyout-status');
@@ -443,37 +513,92 @@ window.submitActionLog = async function() {
 };
 
 window.switchPhase = function(phaseNumber) {
-    document.getElementById('phase1-board')?.classList.add('hidden');
-    document.getElementById('phase2-board')?.classList.add('hidden');
-    document.getElementById('phase3-board')?.classList.add('hidden');
-    
+    // --- Hide ALL boards completely (remove every layout class, then add hidden) ---
+    const phase1 = document.getElementById('phase1-board');
+    const phase2 = document.getElementById('phase2-board');
+    const phase3 = document.getElementById('phase3-board');
+
+    if (phase1) {
+        phase1.classList.add('hidden');
+        phase1.classList.remove('block', 'flex');
+    }
+    if (phase2) {
+        phase2.classList.add('hidden');
+        phase2.classList.remove('block', 'flex');
+    }
+    if (phase3) {
+        phase3.classList.add('hidden');
+        phase3.classList.remove('block', 'flex');
+    }
+
     const emptyState = document.getElementById('empty-state');
-    if(emptyState) {
+    if (emptyState) {
         emptyState.classList.add('hidden');
         emptyState.classList.remove('flex');
     }
 
+    // --- Reset nav button styling ---
     const navBtns = document.querySelectorAll('.nav-btn');
-    navBtns.forEach(btn => { btn.className = "w-10 h-10 rounded-full text-slate-400 hover:text-white hover:bg-slate-700 flex items-center justify-center transition-all nav-btn"; });
-
+    navBtns.forEach(btn => {
+        btn.className = "w-10 h-10 rounded-full text-slate-400 hover:text-white hover:bg-slate-700 flex items-center justify-center transition-all nav-btn";
+    });
     const activeBtn = document.getElementById(`nav-${phaseNumber}`);
-    if (activeBtn) { activeBtn.className = "w-10 h-10 rounded-full bg-pink-500 flex items-center justify-center text-white shadow-md transition-all nav-btn"; }
+    if (activeBtn) {
+        activeBtn.className = "w-10 h-10 rounded-full bg-pink-500 flex items-center justify-center text-white shadow-md transition-all nav-btn";
+    }
 
+    // --- Show ONLY the chosen board ---
     if (phaseNumber === 1) {
         if (globalTrackerData && globalTrackerData.length > 0) {
-            document.getElementById('phase1-board')?.classList.remove('hidden');
+            if (phase1) {
+                phase1.classList.remove('hidden');
+                phase1.classList.add('block');
+            }
         } else {
-            if(emptyState) {
+            if (emptyState) {
                 emptyState.classList.remove('hidden');
                 emptyState.classList.add('flex');
             }
         }
     } else if (phaseNumber === 2) {
-        document.getElementById('phase2-board')?.classList.remove('hidden');
-        document.getElementById('phase2-board')?.classList.add('flex');
+        if (phase2) {
+            phase2.classList.remove('hidden');
+            phase2.classList.add('flex');
+        }
+
+        // Reset the inner Phase 2 sub-views (in case detail view was open)
+        const detailView = document.getElementById('tech-detail-view');
+        const dashboardView = document.getElementById('tech-dashboard-view');
+        if (detailView) { detailView.classList.add('hidden'); detailView.classList.remove('block'); }
+        if (dashboardView) { dashboardView.classList.remove('hidden'); dashboardView.classList.add('block'); }
+
+        // Clear stale data and KPI counters so previous project's rows don't flash
+        window.phase2DataMap = {};
+        const tbody = document.getElementById('tech-table-body');
+        if (tbody) {
+            tbody.innerHTML = '<tr><td colspan="9" class="px-5 py-8 text-center text-sm font-medium text-slate-400">Loading Phase 2 data...</td></tr>';
+        }
+        ['tech-metric-total','tech-metric-pending','tech-metric-scheduled',
+         'tech-metric-rescheduled','tech-metric-inprogress','tech-metric-delayed'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.innerText = '0';
+        });
+
+        // Sync currently-selected project so the API call filters correctly
+        const selector = document.getElementById('projectSelector');
+        if (selector && selector.value) {
+            window.currentProjectName = selector.value;
+        }
+
+        // Trigger the actual data fetch (lives in phase2_technical.js)
+        if (typeof populateTechTable === 'function') {
+            populateTechTable();
+        }
     } else if (phaseNumber === 3) {
-        document.getElementById('phase3-board')?.classList.remove('hidden');
-        document.getElementById('phase3-board')?.classList.add('flex');
+        if (phase3) {
+            phase3.classList.remove('hidden');
+            phase3.classList.add('flex');
+        }
     }
 };
 

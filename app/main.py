@@ -1,12 +1,13 @@
 import os
-from fastapi import FastAPI, BackgroundTasks, Request, HTTPException
+from fastapi import FastAPI, BackgroundTasks, Request, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse,StreamingResponse
 from apscheduler.schedulers.background import BackgroundScheduler
 from contextlib import asynccontextmanager
-from app.core.database import engine, Base, SessionLocal
-from app.models.domain import TeamMaster
+from app.core.database import engine, Base, SessionLocal, get_db
+from app.models.domain import TeamMaster, DepartmentMaster
+from app.services.identity_validator import enrich_owner_label
 from app.core.mom_engine import generate_and_send_mom
 from app.models.domain import IntegrationTouchpoint, IDRFunctional, IDRTechnical, IDRActionLog
 # Import our new architecture
@@ -18,6 +19,7 @@ from app.workshop_mailer import send_workshop_invites
 from app.wud_engine import create_wud_word
 from app.rgt_engine import generate_rgt
 from app.core.email_dispatcher import send_rgt_invite
+from sqlalchemy.orm import Session
 
 
 # Force Windows/Python to recognize .js files correctly
@@ -99,24 +101,50 @@ async def read_index():
     return FileResponse('index.html')
 
 @app.get("/api/phase2/dashboard")
-def get_phase2_dashboard():
-    """Fetches real data for the Phase 2 Technical IDR Board with Dynamic Date Logic."""
+def get_phase2_dashboard(request: Request):
+    """Fetches real data for the Phase 2 Technical IDR Board, filtered by project."""
     db = SessionLocal()
     try:
+        # Resolve project from query param; fall back to first project if not provided
+        from app.models.domain import Project
+        project_name = request.query_params.get('project')
+        if not project_name:
+            first_proj = db.query(Project).first()
+            project_name = first_proj.project_name if first_proj else None
+
+        if not project_name:
+            return {"data": []}
+
+        project = db.query(Project).filter(Project.project_name == project_name).first()
+        if not project:
+            return {"data": []}
+
         results = db.query(
             IntegrationTouchpoint, IDRFunctional, IDRTechnical
         ).join(
             IDRFunctional, IntegrationTouchpoint.id == IDRFunctional.touchpoint_id
         ).outerjoin(
             IDRTechnical, IntegrationTouchpoint.id == IDRTechnical.touchpoint_id
-        ).filter(IDRFunctional.idr_status.ilike("%Signed-Off%")).all()
+        ).filter(
+            IntegrationTouchpoint.project_id == project.id,
+            IDRFunctional.idr_status.ilike("%Signed-Off%")
+        ).all()
 
         dashboard_data = []
+        # Per-request enrichment cache so we don't hit team_master once per row
+        owner_cache = {}
         for tp, func, tech in results:
-            
-            tech_owner = getattr(func, "owner", "Unassigned")
-            dept = getattr(func, "business_department", "")
-            display_owner = f"{tech_owner} ({dept})" if dept else tech_owner
+
+            tech_owner = getattr(func, "owner", "Unassigned") or "Unassigned"
+            # Try identity-master enrichment first (yields "Rahul (CBS)" when matched).
+            # If unmatched, fall back to the legacy business_department concatenation
+            # so demo data without identity rows still looks reasonable.
+            enriched = enrich_owner_label(db, tech_owner, _cache=owner_cache)
+            if enriched and "(" in enriched:
+                display_owner = enriched
+            else:
+                dept = getattr(func, "business_department", "") or ""
+                display_owner = f"{tech_owner} ({dept})" if dept else tech_owner
 
             integration_type = tech.integration_type if tech and tech.integration_type else "unassigned"
             

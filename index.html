@@ -50,25 +50,71 @@
                 
                 <span id="lastUpdatedText" class="text-xs text-slate-400 font-medium mr-2">Ready</span>
                 
-                <button id="btn-send-report" onclick="sendOnDemandReport()" class="cursor-pointer bg-indigo-50 hover:bg-indigo-100 text-indigo-600 border border-indigo-200 text-sm font-semibold py-2 px-4 rounded-full shadow-sm transition-colors flex items-center mr-3">
-                    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
+                <button id="btn-send-report" onclick="sendOnDemandReport()" class="cursor-pointer bg-indigo-50 hover:bg-indigo-100 text-indigo-600 border border-indigo-200 text-sm font-semibold py-2 px-4 rounded-full shadow-sm transition-colors inline-flex items-center gap-2 whitespace-nowrap mr-2">
+                    <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
                     Email Report
                 </button>
-                <button onclick="downloadReport()" class="cursor-pointer bg-emerald-50 hover:bg-emerald-100 text-emerald-600 border border-emerald-200 text-sm font-semibold py-2 px-4 rounded-full shadow-sm transition-colors flex items-center mr-3">
-                    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                <button onclick="downloadReport()" class="cursor-pointer bg-emerald-50 hover:bg-emerald-100 text-emerald-600 border border-emerald-200 text-sm font-semibold py-2 px-4 rounded-full shadow-sm transition-colors inline-flex items-center gap-2 whitespace-nowrap mr-2">
+                    <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
                     Export CSV
                 </button>
-                <button onclick="document.getElementById('teamLovInput').click()" class="cursor-pointer bg-slate-100 hover:bg-slate-200 text-slate-600 border border-slate-200 text-sm font-semibold py-2 px-4 rounded-full shadow-sm transition-colors flex items-center mr-3">
-                    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
-                    Manage Teams
-                </button>
-                
-                <label class="cursor-pointer bg-[#1a233a] hover:bg-slate-800 text-white text-sm font-semibold py-2 px-5 rounded-full shadow-md transition-colors flex items-center">
-                    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+                <!-- Manage Identities (replaces the legacy "Manage Teams" single button) -->
+                <div class="relative mr-2" id="manage-identities-wrapper">
+                    <button type="button" id="manage-identities-btn" onclick="toggleIdentitiesMenu(event)" class="cursor-pointer bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 text-sm font-semibold py-2 px-4 rounded-full shadow-sm transition-colors inline-flex items-center gap-2 whitespace-nowrap">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
+                        Manage Identities
+                        <svg id="manage-identities-caret" class="w-4 h-4 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                    </button>
+
+                    <div id="manage-identities-menu" class="hidden absolute right-0 mt-2 w-80 bg-white border border-slate-200 rounded-xl shadow-xl z-40 overflow-hidden">
+                        <div class="px-4 py-2.5 bg-slate-50 border-b border-slate-100">
+                            <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Identity Master Data</p>
+                        </div>
+
+                        <button type="button" onclick="document.getElementById('departmentsCsvInput').click(); closeIdentitiesMenu();" class="w-full flex items-start gap-3 px-4 py-3 hover:bg-slate-50 transition-colors text-left border-b border-slate-100">
+                            <div class="w-8 h-8 rounded-md bg-indigo-50 text-indigo-600 flex items-center justify-center flex-shrink-0 mt-0.5">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path></svg>
+                            </div>
+                            <div class="flex-1">
+                                <p class="text-sm font-semibold text-[#1a233a]">Upload Departments</p>
+                                <p class="text-xs text-slate-500 mt-0.5">CSV: Dept ID · Name · Email · Is CRM</p>
+                            </div>
+                        </button>
+
+                        <button type="button" onclick="document.getElementById('teamMembersCsvInput').click(); closeIdentitiesMenu();" class="w-full flex items-start gap-3 px-4 py-3 hover:bg-slate-50 transition-colors text-left border-b border-slate-100">
+                            <div class="w-8 h-8 rounded-md bg-blue-50 text-blue-600 flex items-center justify-center flex-shrink-0 mt-0.5">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
+                            </div>
+                            <div class="flex-1">
+                                <p class="text-sm font-semibold text-[#1a233a]">Upload Team Members</p>
+                                <p class="text-xs text-slate-500 mt-0.5">CSV: Name · Email · Phone · Dept ID</p>
+                            </div>
+                        </button>
+
+                        <a href="/admin/migration-template" download class="w-full flex items-start gap-3 px-4 py-3 hover:bg-slate-50 transition-colors text-left" onclick="closeIdentitiesMenu()">
+                            <div class="w-8 h-8 rounded-md bg-emerald-50 text-emerald-600 flex items-center justify-center flex-shrink-0 mt-0.5">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                            </div>
+                            <div class="flex-1">
+                                <p class="text-sm font-semibold text-[#1a233a]">Download Migration Template</p>
+                                <p class="text-xs text-slate-500 mt-0.5">All legacy names → fill in dept/email, re-upload</p>
+                            </div>
+                        </a>
+                    </div>
+                </div>
+
+                <label class="cursor-pointer bg-[#1a233a] hover:bg-slate-800 text-white text-sm font-semibold py-2 px-4 rounded-full shadow-md transition-colors inline-flex items-center gap-2 whitespace-nowrap">
+                    <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
                     Upload CSV
                     <input type="file" id="csvFileInput" accept=".csv" class="hidden">
                     <input type="file" id="teamLovInput" class="hidden" accept=".csv">
                 </label>
+
+                <!-- Hidden file inputs driven by the Manage Identities menu above -->
+                <input type="file" id="departmentsCsvInput" class="hidden" accept=".csv">
+                <input type="file" id="teamMembersCsvInput" class="hidden" accept=".csv">
+                <!-- Kept for backward compat with any older JS still listening on it; not exposed via UI. -->
+                <input type="file" id="teamLovInput" class="hidden" accept=".csv">
             </div>
         </header>
 
@@ -332,6 +378,32 @@
 
                     <!-- Phase 2 Dropdown behavior (open/close + click-outside) -->
                     <script>
+                        // ==========================================
+                        // MANAGE IDENTITIES DROPDOWN (header)
+                        // ==========================================
+                        function toggleIdentitiesMenu(e) {
+                            if (e) e.stopPropagation();
+                            const menu = document.getElementById('manage-identities-menu');
+                            const caret = document.getElementById('manage-identities-caret');
+                            if (!menu) return;
+                            if (menu.classList.contains('hidden')) {
+                                menu.classList.remove('hidden');
+                                if (caret) caret.classList.add('rotate-180');
+                            } else {
+                                closeIdentitiesMenu();
+                            }
+                        }
+                        function closeIdentitiesMenu() {
+                            const menu = document.getElementById('manage-identities-menu');
+                            const caret = document.getElementById('manage-identities-caret');
+                            if (menu) menu.classList.add('hidden');
+                            if (caret) caret.classList.remove('rotate-180');
+                        }
+                        document.addEventListener('click', (e) => {
+                            const wrapper = document.getElementById('manage-identities-wrapper');
+                            if (wrapper && !wrapper.contains(e.target)) closeIdentitiesMenu();
+                        });
+
                         function togglePhase2Menu(e) {
                             if (e) e.stopPropagation();
                             const menu = document.getElementById('phase2-actions-menu');
@@ -359,6 +431,7 @@
                             if (e.key === 'Escape') {
                                 closePhase2Menu();
                                 closePhase2FilterMenu();
+                                closeIdentitiesMenu();
                             }
                         });
 
@@ -706,9 +779,9 @@
     </div>
 
     <!-- 1. YOUR ORIGINAL PHASE 1 SCRIPT (Untouched) -->
-    <script type="module" src="/js/app-dashboard.js?v=16"></script>
+    <script type="module" src="/js/app-dashboard.js?v=29"></script>
     
     <!-- 2. THE NEW PHASE 2 & NAVIGATION SCRIPT -->
-    <script src="js/phase2_technical.js?v=21"></script>
+    <script src="js/phase2_technical.js?v=29"></script>
 </body>
 </html>
