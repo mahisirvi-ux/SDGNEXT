@@ -10,12 +10,15 @@ from app.models.domain import TeamMaster
 from app.core.mom_engine import generate_and_send_mom
 from app.models.domain import IntegrationTouchpoint, IDRFunctional, IDRTechnical, IDRActionLog
 # Import our new architecture
-from app.api.routes import upload, projects, tasks
+from app.api.routes import upload, projects, tasks,integrations
 from app.core.email_engine import generate_and_send_daily_summary, generate_and_send_follow_ups
 import mimetypes
-from datetime import date
+from datetime import date, datetime
 from app.workshop_mailer import send_workshop_invites
 from app.wud_engine import create_wud_word
+from app.rgt_engine import generate_rgt
+from app.core.email_dispatcher import send_rgt_invite
+
 
 # Force Windows/Python to recognize .js files correctly
 mimetypes.add_type('application/javascript', '.js')
@@ -56,6 +59,7 @@ app.add_middleware(
 app.include_router(upload.router)
 app.include_router(projects.router) 
 app.include_router(tasks.router)
+app.include_router(integrations.router)
 
 # --- NEW: MANUAL TEST ROUTE ---
 @app.get("/test-daily-email")
@@ -116,18 +120,19 @@ def get_phase2_dashboard():
 
             integration_type = tech.integration_type if tech and tech.integration_type else "unassigned"
             
-            # --- INTELLIGENT STATUS CALCULATION ---
+            # --- INTELLIGENT STATUS CALCULATION (datetime-aware) ---
             tech_status = tech.tech_status if tech and tech.tech_status else "Auto"
 
             if tech and tech.start_date and tech.end_date and tech_status not in ["Completed", "Rescheduled"]:
-                today = date.today()
-                # Safely parse dates from DB
-                start_d = tech.start_date if isinstance(tech.start_date, date) else date.fromisoformat(str(tech.start_date))
-                end_d = tech.end_date if isinstance(tech.end_date, date) else date.fromisoformat(str(tech.end_date))
-                
-                if today > end_d:
+                now = datetime.now()
+                # tech.start_date / end_date are datetime objects from the DB.
+                # Coerce defensively in case they come back as strings.
+                start_dt = tech.start_date if isinstance(tech.start_date, datetime) else datetime.fromisoformat(str(tech.start_date))
+                end_dt   = tech.end_date   if isinstance(tech.end_date, datetime)   else datetime.fromisoformat(str(tech.end_date))
+
+                if now > end_dt:
                     tech_status = "Delayed"
-                elif today < start_d:
+                elif now < start_dt:
                     tech_status = "Scheduled"
                 else:
                     tech_status = "In Progress"
@@ -147,14 +152,20 @@ def get_phase2_dashboard():
             elif tech_status == "Rescheduled":
                 status_class = "bg-purple-100 text-purple-700 border-purple-200"
 
+            # Serialize datetimes as 'YYYY-MM-DD HH:MM' for the frontend.
+            # The space (not 'T') keeps it human-readable; FE splits on it.
+            start_str = tech.start_date.strftime("%Y-%m-%d %H:%M") if (tech and tech.start_date) else ""
+            end_str   = tech.end_date.strftime("%Y-%m-%d %H:%M")   if (tech and tech.end_date)   else ""
+
             dashboard_data.append({
                 "id": tp.id,
                 "name": tp.name,
                 "module": func.module or "Unknown",
+                "source_system": getattr(func, "source_system", None) or "-",
                 "integration": integration_type,
                 "owner": display_owner, 
-                "start": str(tech.start_date) if tech and tech.start_date else "",
-                "end": str(tech.end_date) if tech and tech.end_date else "",
+                "start": start_str,
+                "end": end_str,
                 "techStatus": tech_status,
                 "statusClass": status_class,
                 "techDetails": tech.technical_details if tech and tech.technical_details else {}
@@ -167,16 +178,30 @@ def get_phase2_dashboard():
 
 @app.put("/api/phase2/update/{touchpoint_id}")
 async def update_tech_idr(touchpoint_id: int, request: Request):
-    """Saves the Integration Type, Dates, and Manual Status Overrides."""
+    """Saves the Integration Type, Dates+Times, and Manual Status Overrides."""
     db = SessionLocal()
     try:
         data = await request.json()
         tech = db.query(IDRTechnical).filter(IDRTechnical.touchpoint_id == touchpoint_id).first()
-        
-        start_val = data.get("start")
-        end_val = data.get("end")
-        clean_start = start_val if start_val and start_val.strip() != "" else None
-        clean_end = end_val if end_val and end_val.strip() != "" else None
+
+        # Parse start/end. Accepted formats:
+        #   "YYYY-MM-DD HH:MM"   (preferred, what FE now sends)
+        #   "YYYY-MM-DDTHH:MM"   (datetime-local fallback)
+        #   "YYYY-MM-DD"         (legacy date-only -> treated as 00:00)
+        def parse_dt(value):
+            if not value or not str(value).strip():
+                return None
+            s = str(value).strip().replace("T", " ")
+            # Accept "YYYY-MM-DD HH:MM[:SS]"
+            for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
+                try:
+                    return datetime.strptime(s, fmt)
+                except ValueError:
+                    continue
+            raise ValueError(f"Unrecognized datetime format: {value!r}")
+
+        clean_start = parse_dt(data.get("start"))
+        clean_end = parse_dt(data.get("end"))
         
         # If user explicitly selected Completed/Rescheduled, save it. Otherwise revert to Auto.
         incoming_status = data.get("status", "Auto")
@@ -282,8 +307,8 @@ def get_single_touchpoint(tp_id: int):
                 "fallback": getattr(func, "business_fallback", "-"),
                 "business_purpose": getattr(func, "business_req", "-"),
                 
-                "start": str(tech.start_date) if tech and tech.start_date else "",
-                "end": str(tech.end_date) if tech and tech.end_date else "",
+                "start": tech.start_date.strftime("%Y-%m-%d %H:%M") if (tech and tech.start_date) else "",
+                "end":   tech.end_date.strftime("%Y-%m-%d %H:%M")   if (tech and tech.end_date)   else "",
                 "techStatus": tech_status,
                 "techDetails": tech.technical_details if tech and tech.technical_details else {},
                 "history_log": formatted_history.strip()

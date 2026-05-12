@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, Date, JSON, Boolean, ForeignKey, TIMESTAMP
+from sqlalchemy import Column, Integer, String, Text, Date, DateTime, JSON, Boolean, ForeignKey, TIMESTAMP
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from app.core.database import Base
@@ -83,8 +83,8 @@ class IDRTechnical(Base):
     
     # NEW: Project Management Tracking columns
     source_system = Column(String, nullable=True)
-    start_date = Column(Date, nullable=True)
-    end_date = Column(Date, nullable=True)
+    start_date = Column(DateTime, nullable=True)   # Now stores date + time for workshop scheduling
+    end_date = Column(DateTime, nullable=True)     # Now stores date + time for workshop scheduling
     
     # Integration Approach (This will start as Null/Unassigned)
     integration_type = Column(String, nullable=True) # "API", "Database", "Batch"

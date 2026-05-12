@@ -53,9 +53,15 @@ function populatePage(tp) {
     document.getElementById('fd-val-output').innerText = tp.output || 'Not specified';
     document.getElementById('fd-val-flow').innerText = tp.business_flow || 'No objective provided.';
 
-    // Tracking Dates
-    document.getElementById('fd-start').value = (tp.start && tp.start !== "-" && tp.start !== "None") ? tp.start : "";
-    document.getElementById('fd-end').value = (tp.end && tp.end !== "-" && tp.end !== "None") ? tp.end : "";
+    // Tracking Dates + Times. Backend sends 'YYYY-MM-DD HH:MM'; split into two inputs.
+    const rawStart = (tp.start && tp.start !== "-" && tp.start !== "None") ? tp.start : "";
+    const rawEnd   = (tp.end   && tp.end   !== "-" && tp.end   !== "None") ? tp.end   : "";
+    const [sDate = "", sTime = ""] = rawStart.split(" ");
+    const [eDate = "", eTime = ""] = rawEnd.split(" ");
+    document.getElementById('fd-start').value = sDate;
+    document.getElementById('fd-start-time').value = sTime;
+    document.getElementById('fd-end').value = eDate;
+    document.getElementById('fd-end-time').value = eTime;
 
     // Technical JSON Data
     const td = tp.techDetails || {};
@@ -133,14 +139,22 @@ async function saveFullDetails() {
         techDetails.dbFirewall = document.getElementById('fd-db-firewall').value;
     }
 
+    // Recombine date + time inputs into the backend's expected 'YYYY-MM-DD HH:MM' format
+    const combineDT = (dateId, timeId) => {
+        const d = (document.getElementById(dateId)?.value || "").trim();
+        if (!d) return "";
+        const t = (document.getElementById(timeId)?.value || "").trim() || "00:00";
+        return `${d} ${t}`;
+    };
+
     try {
         const response = await fetch(`/api/phase2/update/${id}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 integration: currentData.integration, 
-                start: document.getElementById('fd-start').value,
-                end: document.getElementById('fd-end').value,
+                start: combineDT('fd-start', 'fd-start-time'),
+                end:   combineDT('fd-end',   'fd-end-time'),
                 status: currentData.techStatus,
                 technical_details: techDetails
             })

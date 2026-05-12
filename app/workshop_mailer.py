@@ -131,7 +131,12 @@ def send_workshop_invites():
         # 2. Find workshops for tomorrow
         tomorrow = date.today() + timedelta(days=1)
         tomorrow_str = tomorrow.strftime("%B %d, %Y")
-        
+
+        # start_date is now a DateTime column. Match any workshop whose start
+        # falls within tomorrow (00:00 inclusive .. day_after 00:00 exclusive).
+        tomorrow_start = datetime.combine(tomorrow, datetime.min.time())
+        day_after_start = tomorrow_start + timedelta(days=1)
+
         results = db.query(
             IntegrationTouchpoint, IDRFunctional, IDRTechnical
         ).join(
@@ -139,8 +144,9 @@ def send_workshop_invites():
         ).join(
             IDRTechnical, IntegrationTouchpoint.id == IDRTechnical.touchpoint_id
         ).filter(
-            IDRTechnical.start_date == tomorrow
-        ).all()
+            IDRTechnical.start_date >= tomorrow_start,
+            IDRTechnical.start_date <  day_after_start
+        ).order_by(IDRTechnical.start_date.asc()).all()
 
         if not results:
             print(f"[{datetime.now()}] No workshops scheduled for {tomorrow_str}.")
@@ -151,11 +157,22 @@ def send_workshop_invites():
         for tp, func, tech in results:
             owner = getattr(func, "owner", "Unassigned Team")
             integration = tech.integration_type.lower() if tech.integration_type else "unassigned"
-            
+
+            # Format the time window for the card header (e.g. "10:30 AM – 11:30 AM")
+            time_window = ""
+            if tech.start_date:
+                start_fmt = tech.start_date.strftime("%I:%M %p").lstrip("0")
+                if tech.end_date:
+                    end_fmt = tech.end_date.strftime("%I:%M %p").lstrip("0")
+                    time_window = f"{start_fmt} – {end_fmt}"
+                else:
+                    time_window = start_fmt
+
             workshops_by_owner[owner].append({
                 "name": tp.name,
                 "module": func.module or "-",
                 "integration": integration.upper(),
+                "time_window": time_window,
                 "reqs": PRE_REQS.get(integration, PRE_REQS["unassigned"])
             })
 
@@ -171,12 +188,17 @@ def send_workshop_invites():
             # Generate the specific touchpoint HTML blocks
             cards_html = ""
             for item in items:
+                time_badge = ""
+                if item.get('time_window'):
+                    time_badge = f"""<div style="margin-top: 8px; display: inline-block; background-color: #eef2ff; color: #4338ca; font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 4px; border: 1px solid #c7d2fe;">⏱ {item['time_window']}</div>"""
+
                 cards_html += f"""
                 <div style="border: 1px solid #cbd5e1; border-radius: 6px; margin-bottom: 20px; background-color: #ffffff; overflow: hidden;">
                     <div style="background-color: #f8fafc; padding: 12px 20px; border-bottom: 1px solid #cbd5e1;">
                         <h3 style="margin: 0; color: #0f172a; font-size: 16px;">
                             {item['name']} <span style="float: right; color: #64748b; font-size: 13px; font-weight: normal; margin-top: 2px;">Type: {item['integration']}</span>
                         </h3>
+                        {time_badge}
                     </div>
                     <div style="padding: 20px;">
                         <strong style="color: #3b82f6; text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px;">Required Pre-Requisites</strong>

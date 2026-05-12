@@ -129,12 +129,18 @@
                 <div class="space-y-4">
                     <div class="grid grid-cols-2 gap-4">
                         <div>
-                            <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Start Date</label>
-                            <input type="date" id="fd-start" disabled class="w-full text-sm p-2 rounded border border-slate-300 disabled:border-transparent disabled:bg-transparent disabled:p-0 disabled:font-medium disabled:text-slate-800 transition-all">
+                            <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Start Date / Time</label>
+                            <div class="flex gap-2">
+                                <input type="date" id="fd-start" disabled class="flex-1 min-w-0 text-sm p-2 rounded border border-slate-300 disabled:border-transparent disabled:bg-transparent disabled:p-0 disabled:font-medium disabled:text-slate-800 transition-all">
+                                <input type="time" id="fd-start-time" disabled class="w-[105px] text-sm p-2 rounded border border-slate-300 disabled:border-transparent disabled:bg-transparent disabled:p-0 disabled:font-medium disabled:text-slate-800 transition-all">
+                            </div>
                         </div>
                         <div>
-                            <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">End Date</label>
-                            <input type="date" id="fd-end" disabled class="w-full text-sm p-2 rounded border border-slate-300 disabled:border-transparent disabled:bg-transparent disabled:p-0 disabled:font-medium disabled:text-slate-800 transition-all">
+                            <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">End Date / Time</label>
+                            <div class="flex gap-2">
+                                <input type="date" id="fd-end" disabled class="flex-1 min-w-0 text-sm p-2 rounded border border-slate-300 disabled:border-transparent disabled:bg-transparent disabled:p-0 disabled:font-medium disabled:text-slate-800 transition-all">
+                                <input type="time" id="fd-end-time" disabled class="w-[105px] text-sm p-2 rounded border border-slate-300 disabled:border-transparent disabled:bg-transparent disabled:p-0 disabled:font-medium disabled:text-slate-800 transition-all">
+                            </div>
                         </div>
                     </div>
                     <div class="border-t border-slate-100 pt-4 mt-4">
@@ -152,6 +158,6 @@
         </div>
     </div>
 
-    <script src="/js/details.js?v=5"></script>
+    <script src="/js/details.js?v=8"></script>
 </body>
 </html>

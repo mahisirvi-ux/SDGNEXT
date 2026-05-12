@@ -1,4 +1,5 @@
 import os
+import json
 from io import BytesIO
 from datetime import datetime
 from docx import Document
@@ -6,14 +7,47 @@ from docx.shared import Pt, RGBColor, Inches
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn, nsdecls
 from docx.oxml import parse_xml
-
-# ---> LIVE API IMPORT RESTORED <---
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn, nsdecls
+# ---> LIVE API IMPORT <---
 from app.core.ai_agent import generate_wud_content
 
 def set_cell_background(cell, hex_color):
     """Helper function to set the background color of a table cell."""
     shading_elm = parse_xml(f'<w:shd {nsdecls("w")} w:fill="{hex_color}"/>')
     cell._tc.get_or_add_tcPr().append(shading_elm)
+def insert_dynamic_toc(paragraph):
+    """Injects a native, clickable Microsoft Word Table of Contents field."""
+    run = paragraph.add_run()
+    
+    # 1. Begin Field
+    fldChar1 = OxmlElement('w:fldChar')
+    fldChar1.set(qn('w:fldCharType'), 'begin')
+    run._r.append(fldChar1)
+
+    # 2. Instruction text for TOC (Levels 1-3, Hyperlinks enabled)
+    instrText = OxmlElement('w:instrText')
+    instrText.set(qn('xml:space'), 'preserve')
+    instrText.text = 'TOC \\o "1-3" \\h \\z \\u'
+    run._r.append(instrText)
+
+    # 3. Separate Field
+    fldChar2 = OxmlElement('w:fldChar')
+    fldChar2.set(qn('w:fldCharType'), 'separate')
+    run._r.append(fldChar2)
+
+    # 4. Placeholder text
+    run2 = paragraph.add_run("Right-click here and select 'Update Field' to generate the Table of Contents.")
+    run2.font.name = 'Poppins'
+    run2.font.size = Pt(11)
+    run2.font.bold = True
+    run2.font.color.rgb = RGBColor(128, 128, 128) # Gray to indicate it needs updating
+
+    # 5. End Field
+    run3 = paragraph.add_run()
+    fldChar3 = OxmlElement('w:fldChar')
+    fldChar3.set(qn('w:fldCharType'), 'end')
+    run3._r.append(fldChar3)
 
 def create_wud_word(touchpoint_data: dict) -> BytesIO:
     """Generates a native Word doc using pure python-docx with live AWS Bedrock AI."""
@@ -76,9 +110,17 @@ def create_wud_word(touchpoint_data: dict) -> BytesIO:
     if style_h2.font.element.rPr is not None and style_h2.font.element.rPr.rFonts is not None:
         style_h2.font.element.rPr.rFonts.set(qn('w:asciiTheme'), '')
         style_h2.font.element.rPr.rFonts.set(qn('w:hAnsiTheme'), '')
-
+    # Set Native TOC Styles to Poppins 11pt Bold
+    for i in range(1, 4):
+        try:
+            toc_style = doc.styles[f'TOC {i}']
+            toc_style.font.name = 'Poppins'
+            toc_style.font.size = Pt(11)
+            toc_style.font.bold = True
+        except KeyError:
+            pass # Style might not exist in the default empty template until updated
     # ==========================================
-    # PAGE 1: TITLE PAGE (Pure Python Layout)
+    # PAGE 1: TITLE PAGE
     # ==========================================
     doc.add_paragraph("\n\n") 
     
@@ -205,7 +247,24 @@ def create_wud_word(touchpoint_data: dict) -> BytesIO:
     doc.add_page_break()
 
     # ==========================================
-    # PAGE 4+: MAIN CONTENT
+    # PAGE 4: TABLE OF CONTENTS
+    # ==========================================
+    toc_heading = doc.add_paragraph()
+    toc_heading_run = toc_heading.add_run('Table of Contents')
+    toc_heading_run.font.name = 'Poppins'
+    toc_heading_run.font.size = Pt(16)
+    toc_heading_run.font.color.rgb = RGBColor(65, 105, 225) # Corporate Blue matching your screenshot
+
+    #doc.add_paragraph("\n")
+
+    # Inject the native, clickable XML Table of Contents
+    toc_para = doc.add_paragraph()
+    insert_dynamic_toc(toc_para)
+
+    doc.add_page_break()
+
+    # ==========================================
+    # PAGE 5+: MAIN CONTENT
     # ==========================================
     doc.add_heading('1. Introduction', level=1)
     
@@ -262,22 +321,48 @@ def create_wud_word(touchpoint_data: dict) -> BytesIO:
         row.cells[0].width = Inches(2.0)
         row.cells[1].width = Inches(4.5)
             
+        # 1. Left Column (Headers)
         row.cells[0].text = "" 
         run_left = row.cells[0].paragraphs[0].add_run(key)
         run_left.font.name = 'Poppins'
         run_left.font.size = Pt(11)
         run_left.font.bold = True
         
-        val_str = str(val) if val else "NA"
+        # 2. Right Column (Values)
         row.cells[1].text = "" 
-        run_right = row.cells[1].paragraphs[0].add_run(val_str)
-        run_right.font.name = 'Poppins'
-        run_right.font.size = Pt(11)
+        
+        # ---> NEW LOGIC: Intercept Payloads and Format as JSON Code Blocks <---
+        if key in ["Input Request Payload", "Output Response Payload"]:
+            try:
+                # Attempt to parse the string into a JSON object, then format it beautifully
+                parsed_json = json.loads(val) if isinstance(val, str) else val
+                formatted_val = json.dumps(parsed_json, indent=4)
+            except Exception:
+                # Fallback just in case the payload isn't valid JSON
+                formatted_val = str(val) if val else "NA"
+                
+            run_right = row.cells[1].paragraphs[0].add_run(formatted_val)
+            run_right.font.name = 'Consolas' # Monospaced font for code readability
+            run_right.font.size = Pt(9)      # Smaller font so large JSONs fit better
+            
+            # Give the code block a subtle gray background to make it pop!
+            set_cell_background(row.cells[1], "F4F4F4") 
+            
+        else:
+            # Standard formatting for all other rows
+            val_str = str(val) if val else "NA"
+            run_right = row.cells[1].paragraphs[0].add_run(val_str)
+            run_right.font.name = 'Poppins'
+            run_right.font.size = Pt(11)
 
     doc.add_paragraph("\n")
     doc.add_heading('CONCLUSION', level=1)
     doc.add_paragraph(f"This WUD document formalizes the technical execution plan for the {api_name} integration.")
 
+    settings = doc.settings.element
+    update_fields = OxmlElement('w:updateFields')
+    update_fields.set(qn('w:val'), 'true')
+    settings.append(update_fields)
     word_buffer = BytesIO()
     doc.save(word_buffer)
     word_buffer.seek(0)
