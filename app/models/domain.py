@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, Date, DateTime, JSON, Boolean, ForeignKey, TIMESTAMP
+from sqlalchemy import Column, Integer, String, Text, Date, DateTime, JSON, Boolean, ForeignKey, TIMESTAMP, UniqueConstraint
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from app.core.database import Base
@@ -13,6 +13,8 @@ class Project(Base):
     project_name = Column(String(50), unique=True, index=True)
 
     touchpoints = relationship("IntegrationTouchpoint", back_populates="project", cascade="all, delete-orphan")
+    # A project owns its departments (and through them, team members)
+    departments = relationship("DepartmentMaster", back_populates="project", cascade="all, delete-orphan")
 
 
 class IntegrationTouchpoint(Base):
@@ -102,35 +104,47 @@ class IDRTechnical(Base):
 # context via join. This is the "hybrid: validated text" pattern.
 
 class DepartmentMaster(Base):
-    """The organization-level master. One row per department (bank or CRM-side)."""
+    """The organization-level master. One row per department PER PROJECT."""
     __tablename__ = "department_master"
 
-    # Human-readable PK (e.g. 'BNK-CBS', 'BNK-DWH', 'CRM-GENERIC').
+    # Human-readable PK (e.g. 'BOM-CBS', 'IBL-CBS', 'BOM-DWH').
     dept_id = Column(String(40), primary_key=True, index=True)
+    # NEW: Link to owning project (one-to-one per project)
+    project_id = Column(Integer, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True)
 
-    department_name = Column(String(150), nullable=False, unique=True, index=True)
+    department_name = Column(String(150), nullable=False, index=True)
     department_email = Column(String(150), nullable=False)
     is_crm = Column(Boolean, default=False, nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
     created_at = Column(TIMESTAMP, server_default=func.now())
 
+    # department_name unique per project (not globally)
+    __table_args__ = (
+        UniqueConstraint('project_id', 'department_name', name='uq_project_dept_name'),
+    )
+
+    project = relationship("Project", back_populates="departments")
     members = relationship("TeamMaster", back_populates="department", cascade="all, delete-orphan")
 
 
 class TeamMaster(Base):
-    """An individual person who may be referenced as Owner / Pending With / etc.
-    Was: {team_name, contact_email}. Now a full identity record.
-    See migration file for column rename steps.
+    """An individual person scoped to a project through their department.
+    Same person (name/email) can exist in multiple projects as separate records.
     """
     __tablename__ = "team_master"
 
     id = Column(Integer, primary_key=True, index=True)
-    full_name = Column(String(150), unique=True, index=True, nullable=False)
-    email = Column(String(150), unique=True, index=True, nullable=False)
+    full_name = Column(String(150), index=True, nullable=False)          # Removed unique=True
+    email = Column(String(150), index=True, nullable=False)              # Removed unique=True
     mobile_phone = Column(String(30), nullable=True)
-    dept_id = Column(String(40), ForeignKey("department_master.dept_id"), nullable=False, index=True)
+    dept_id = Column(String(40), ForeignKey("department_master.dept_id", ondelete="CASCADE"), nullable=False, index=True)
     is_crm_user = Column(Boolean, default=False, nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
     created_at = Column(TIMESTAMP, server_default=func.now())
+
+    # Unique email within a department (prevents duplicates within same project-dept)
+    __table_args__ = (
+        UniqueConstraint('email', 'dept_id', name='uq_email_per_dept'),
+    )
 
     department = relationship("DepartmentMaster", back_populates="members")

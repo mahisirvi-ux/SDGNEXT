@@ -46,7 +46,7 @@ window.currentEditingTechId = null;
         window.phase2DataMap = {};
         const tbody = document.getElementById('tech-table-body');
         if (tbody) {
-            tbody.innerHTML = '<tr><td colspan="9" class="px-5 py-8 text-center text-sm font-medium text-slate-400">Loading project data...</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="7" class="px-5 py-12 text-center text-sm font-medium text-slate-400">Loading project data...</td></tr>';
         }
         // Reset KPI counters to zero while loading
         ['tech-metric-total','tech-metric-pending','tech-metric-scheduled',
@@ -78,7 +78,7 @@ async function populateTechTable() {
     const tbody = document.getElementById('tech-table-body');
     if (!tbody) return;
     
-    tbody.innerHTML = '<tr><td colspan="9" class="px-5 py-8 text-center text-sm font-medium text-slate-400">Loading live data from database...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7" class="px-5 py-12 text-center text-sm font-medium text-slate-400">Loading data...</td></tr>';
     try {
         // Read the current project from the global state (set by Phase 1's project selector)
         // Read the current project from global state (set by app-dashboard.js on project switch)
@@ -95,7 +95,7 @@ async function populateTechTable() {
         // ---------------------------------
 
         if (eligibleItems.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="9" class="px-5 py-8 text-center text-sm text-slate-500 italic">No touchpoints have been signed off in Phase 1 yet.</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="7" class="px-5 py-12 text-center text-sm text-slate-500 italic">No touchpoints have been signed off in Phase 1 yet.</td></tr>`;
             
             // Zero out metrics if empty
             document.getElementById('tech-metric-total').innerText = 0;
@@ -146,10 +146,10 @@ async function populateTechTable() {
 
             // --- THESE ARE THE TWO LINES THAT WENT MISSING! ---
            // --- NEW: Safe Integration Logic ---
-            const safeIntegration = tp.integration || 'unassigned';
+                        const safeIntegration = tp.integration || 'unassigned';
             const integrationDisplay = safeIntegration === 'unassigned' 
-                ? '<span class="text-slate-400 italic text-xs">Pending Workshop</span>' 
-                : `<span class="capitalize font-medium text-slate-700">${safeIntegration}</span>`;
+                ? '<span class="inline-flex items-center px-2 py-0.5 text-[10px] font-medium text-amber-600 bg-amber-50 border border-amber-200 rounded-md">Pending</span>' 
+                : `<span class="inline-flex items-center px-2 py-0.5 text-[10px] font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-md uppercase">${safeIntegration}</span>`;
 
             // Setup the selected state for the new Integration Dropdown
             const isApi = safeIntegration.toLowerCase() === 'api' ? 'selected' : '';
@@ -161,61 +161,64 @@ async function populateTechTable() {
             const isRescheduled = tp.techStatus === 'Rescheduled' ? 'selected' : '';
             const isAuto = (!isCompleted && !isRescheduled) ? 'selected' : '';
 
-            tr.innerHTML = `
-                <td class="px-5 py-4 text-sm font-bold text-slate-800 group">
-                    <button onclick="window.location.href='/details?id=${tp.id}'" class="text-[#1a233a] hover:text-indigo-600 transition-colors text-left flex items-center gap-2">
-                        ${tp.name}
-                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
-                    </button>
-                </td>
+                        tr.innerHTML = `
+                            <td class="px-5 py-3.5">
+                                <a href="/details?id=${tp.id}" class="text-sm font-semibold text-[#1a233a] hover:text-indigo-600 transition-colors leading-snug block">${tp.name}</a>
+                                <span class="text-[10px] text-slate-400 font-medium">${tp.source_system && tp.source_system !== '-' ? tp.source_system : ''}</span>
+                            </td>
                 
-                <td class="px-5 py-4 text-sm text-slate-600">${tp.module}</td>
+                            <td class="px-4 py-3.5">
+                                <span class="text-xs text-slate-600 font-medium">${tp.module}</span>
+                            </td>
 
-                <td class="px-5 py-4 text-sm text-slate-600">${tp.source_system && tp.source_system !== '-' ? tp.source_system : '<span class="text-slate-300 italic">—</span>'}</td>
-
-                <td class="px-5 py-4 text-sm">
-                    <div id="integ-view-${tp.id}">
-                        ${integrationDisplay}
-                    </div>
-                    <select id="integ-edit-${tp.id}" class="hidden text-xs border border-slate-300 rounded p-1 shadow-sm bg-white w-full max-w-[120px]">
-                        <option value="unassigned" ${isUnassignedInteg}>Unassigned</option>
-                        <option value="api" ${isApi}>API</option>
-                        <option value="database" ${isDb}>Database</option>
-                    </select>
-                </td>
+                            <td class="px-4 py-3.5">
+                                <div id="integ-view-${tp.id}">
+                                    ${integrationDisplay}
+                                </div>
+                                <select id="integ-edit-${tp.id}" class="hidden text-xs border border-slate-300 rounded-md px-2 py-1 shadow-sm bg-white w-full max-w-[110px] focus:ring-2 focus:ring-indigo-500">
+                                    <option value="unassigned" ${isUnassignedInteg}>Unassigned</option>
+                                    <option value="api" ${isApi}>API</option>
+                                    <option value="database" ${isDb}>Database</option>
+                                </select>
+                            </td>
                 
-                <td class="px-5 py-4 text-sm text-slate-600">${ownerOnly}</td>
+                            <td class="px-4 py-3.5">
+                                <span class="text-xs text-slate-700 font-medium">${ownerOnly}</span>
+                            </td>
                 
-                <td class="px-5 py-4">
-                    <div class="flex items-center gap-1.5">
-                        <input type="date" id="start-${tp.id}" value="${startDate}" class="text-xs border border-slate-300 rounded p-1.5 shadow-sm bg-slate-50 disabled:opacity-60 disabled:cursor-not-allowed" disabled>
-                        <input type="time" id="start-time-${tp.id}" value="${startTime}" class="text-xs border border-slate-300 rounded p-1.5 shadow-sm bg-slate-50 disabled:opacity-60 disabled:cursor-not-allowed w-[90px]" disabled>
-                    </div>
-                </td>
-
-                <td class="px-5 py-4">
-                    <div class="flex items-center gap-1.5">
-                        <input type="date" id="end-${tp.id}" value="${endDate}" class="text-xs border border-slate-300 rounded p-1.5 shadow-sm bg-slate-50 disabled:opacity-60 disabled:cursor-not-allowed" disabled>
-                        <input type="time" id="end-time-${tp.id}" value="${endTime}" class="text-xs border border-slate-300 rounded p-1.5 shadow-sm bg-slate-50 disabled:opacity-60 disabled:cursor-not-allowed w-[90px]" disabled>
-                    </div>
-                </td>
+                            <td class="px-4 py-3.5">
+                                <div class="space-y-1">
+                                    <div class="flex items-center gap-1.5">
+                                        <span class="text-[9px] font-bold text-emerald-500 w-3">S</span>
+                                        <input type="datetime-local" id="start-dt-${tp.id}" value="${rawStart ? rawStart.replace(' ', 'T') : ''}" class="text-[11px] border border-slate-200 rounded-md px-1.5 py-0.5 bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed w-[155px] focus:ring-1 focus:ring-indigo-400" disabled>
+                                    </div>
+                                    <div class="flex items-center gap-1.5">
+                                        <span class="text-[9px] font-bold text-red-400 w-3">E</span>
+                                        <input type="datetime-local" id="end-dt-${tp.id}" value="${rawEnd ? rawEnd.replace(' ', 'T') : ''}" class="text-[11px] border border-slate-200 rounded-md px-1.5 py-0.5 bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed w-[155px] focus:ring-1 focus:ring-indigo-400" disabled>
+                                    </div>
+                                </div>
+                            </td>
                 
-                <td class="px-5 py-4 whitespace-nowrap">
-                    <span id="status-pill-${tp.id}" class="px-2.5 py-1 text-[10px] uppercase font-bold rounded-full border ${tp.statusClass}">${tp.techStatus}</span>
-                    
-                    <select id="status-edit-${tp.id}" class="hidden text-xs border border-slate-300 rounded p-1 shadow-sm bg-white w-full max-w-[120px]">
-                        <option value="Auto" ${isAuto}>Auto-Calculate</option>
-                        <option value="Completed" ${isCompleted}>Completed</option>
-                        <option value="Rescheduled" ${isRescheduled}>Rescheduled</option>
-                    </select>
-                </td>
+                            <td class="px-4 py-3.5">
+                                <span id="status-pill-${tp.id}" class="inline-flex px-2.5 py-1 text-[10px] uppercase font-bold rounded-md border ${tp.statusClass} whitespace-nowrap">${tp.techStatus}</span>
+                                <select id="status-edit-${tp.id}" class="hidden text-xs border border-slate-300 rounded-md px-2 py-1 shadow-sm bg-white w-full max-w-[115px] focus:ring-2 focus:ring-indigo-500">
+                                    <option value="Auto" ${isAuto}>Auto-Calculate</option>
+                                    <option value="Completed" ${isCompleted}>Completed</option>
+                                    <option value="Rescheduled" ${isRescheduled}>Rescheduled</option>
+                                </select>
+                            </td>
                 
-                <td class="px-5 py-4 text-right min-w-[140px]">
-                    <button onclick="window.location.href='/details?id=${tp.id}'" class="text-indigo-600 hover:text-indigo-800 text-xs font-bold transition-colors mr-3">Specs</button>
-                    <button id="edit-btn-${tp.id}" onclick="enableEditMode(${tp.id})" class="text-blue-600 hover:text-blue-800 text-xs font-bold transition-colors">Edit</button>
-                    <button id="save-btn-${tp.id}" onclick="saveRowChanges(${tp.id})" class="hidden bg-emerald-500 hover:bg-emerald-600 text-white text-[10px] uppercase font-bold py-1.5 px-3 rounded shadow-sm transition-all">Save</button>
-                </td>
-            `;
+                            <td class="px-4 py-3.5 text-center">
+                                <button id="edit-btn-${tp.id}" onclick="enableEditMode(${tp.id})" class="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-500 hover:text-indigo-600 bg-slate-50 hover:bg-indigo-50 border border-slate-200 hover:border-indigo-200 rounded-md px-2.5 py-1.5 transition-all">
+                                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                                    Edit
+                                </button>
+                                <button id="save-btn-${tp.id}" onclick="saveRowChanges(${tp.id})" class="hidden inline-flex items-center gap-1 bg-emerald-500 hover:bg-emerald-600 text-white text-[10px] uppercase font-bold py-1.5 px-3 rounded-md shadow-sm transition-all">
+                                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                                    Save
+                                </button>
+                            </td>
+                        `;
             tbody.appendChild(tr);
         });
         document.getElementById('tech-metric-total').innerText = eligibleItems.length;
@@ -225,9 +228,12 @@ async function populateTechTable() {
         document.getElementById('tech-metric-inprogress').innerText = countInProgress;
         document.getElementById('tech-metric-delayed').innerText = countDelayed;
 
+        // Update the module filter dropdown with available modules
+        updatePhase2ModuleFilter();
+
         // If active filters hid every row, show a friendly empty state
-        if (visibleCount === 0 && eligibleItems.length > 0) {
-            tbody.innerHTML = `<tr><td colspan="9" class="px-5 py-8 text-center text-sm text-slate-500 italic">No touchpoints match the active filters. <button onclick="clearPhase2Filters()" class="text-pink-500 font-bold underline ml-1">Clear filters</button></td></tr>`;
+                if (visibleCount === 0 && eligibleItems.length > 0) {
+                    tbody.innerHTML = `<tr><td colspan="7" class="px-5 py-12 text-center text-sm text-slate-500 italic">No touchpoints match the active filters. <button onclick="clearPhase2Filters()" class="text-pink-500 font-bold underline ml-1">Clear filters</button></td></tr>`;
         }
     } catch (error) {
         console.error("Error fetching live Phase 2 data:", error);
@@ -240,10 +246,8 @@ async function populateTechTable() {
 // ==========================================
 function enableEditMode(touchpointId) {
     const ids = [
-        `start-${touchpointId}`,
-        `start-time-${touchpointId}`,
-        `end-${touchpointId}`,
-        `end-time-${touchpointId}`
+        `start-dt-${touchpointId}`,
+        `end-dt-${touchpointId}`
     ];
     ids.forEach(id => {
         const el = document.getElementById(id);
@@ -271,19 +275,17 @@ async function saveRowChanges(touchpointId) {
     saveBtn.innerText = "Saving...";
     saveBtn.classList.add("opacity-50", "cursor-not-allowed");
 
-    // Combine date + time into "YYYY-MM-DD HH:MM" (or "" if no date set).
-    // Empty time falls back to 00:00 so the backend can parse it.
-    const combine = (dateId, timeId) => {
-        const d = (document.getElementById(dateId)?.value || "").trim();
-        if (!d) return "";
-        const t = (document.getElementById(timeId)?.value || "").trim() || "00:00";
-        return `${d} ${t}`;
+        // Read datetime-local values and convert to "YYYY-MM-DD HH:MM" format
+    const formatDt = (id) => {
+        const val = (document.getElementById(id)?.value || "").trim();
+        if (!val) return "";
+        return val.replace("T", " ");
     };
 
     const payload = {
         integration: document.getElementById(`integ-edit-${touchpointId}`).value,
-        start: combine(`start-${touchpointId}`, `start-time-${touchpointId}`),
-        end:   combine(`end-${touchpointId}`,   `end-time-${touchpointId}`),
+        start: formatDt(`start-dt-${touchpointId}`),
+        end:   formatDt(`end-dt-${touchpointId}`),
         // Harvest the manual status override
         status: document.getElementById(`status-edit-${touchpointId}`).value
     };
@@ -544,37 +546,17 @@ async function triggerApiRequirementTemplates() {
     }
 
     try {
-        // 1. Extract data directly from the state we mapped in populateTechTable()
-        const allTouchpoints = Object.values(window.phase2DataMap);
-        
-        // 2. Get tomorrow's date formatted as YYYY-MM-DD
-        const tomorrow = new Date();
-        tomorrow.setDate(tomorrow.getDate() + 1);
-        const tomorrowStr = tomorrow.toISOString().split('T')[0];
-
-        // 3. Filter for items scheduled for tomorrow WHERE integration type is API.
-        // tp.start is now "YYYY-MM-DD HH:MM", so we match the date prefix.
-        const targetMeetings = allTouchpoints.filter(tp =>
-            (tp.start || '').startsWith(tomorrowStr) &&
-            (tp.integration || '').toLowerCase() === 'api'
-        );
-
-        if (targetMeetings.length === 0) {
-            alert("No API touchpoints scheduled for tomorrow to process.");
+        // 1. Get current project
+        const project = document.getElementById('projectSelector')?.value;
+        if (!project) {
+            alert("Please select a project first.");
             return;
         }
 
-        // 4. Map it to the payload structure the backend endpoint expects
-        const payloadData = targetMeetings.map(tp => ({
-            bank_email: tp.bank_email || "mahi.sirvi@gmail.com", // Fallback if your table doesn't have the email yet
-            touchpoint_data: tp
-        }));
-
-        // 5. Send it to the endpoint we just built
-        const response = await fetch('/api/touchpoints/dispatch-tomorrow-rgts', {
+        // 2. Send request — backend filters for tomorrow's API touchpoints
+        const response = await fetch(`/api/touchpoints/dispatch-tomorrow-rgts/${project}`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ meetings: payloadData })
+            headers: { 'Content-Type': 'application/json' }
         });
 
         const data = await response.json();
@@ -624,3 +606,175 @@ async function triggerInboxSync() {
         btn.classList.remove('opacity-75', 'cursor-wait');
     }
 }
+
+// ==========================================
+// PHASE 2 FILTERS
+// ==========================================
+
+// Stores the last-applied filter values (so Cancel can revert)
+window._p2FilterSnapshot = { name: '', status: 'ALL', type: 'ALL', module: 'ALL', owner: 'ALL' };
+
+window.matchesPhase2Filters = function(tp) {
+    const nameFilter = (document.getElementById('p2-filter-name')?.value || '').trim().toLowerCase();
+    const statusFilter = document.getElementById('p2-filter-status')?.value || 'ALL';
+    const typeFilter = document.getElementById('p2-filter-type')?.value || 'ALL';
+    const moduleFilter = document.getElementById('p2-filter-module')?.value || 'ALL';
+    const ownerFilter = document.getElementById('p2-filter-owner')?.value || 'ALL';
+
+    if (nameFilter && !(tp.name || '').toLowerCase().includes(nameFilter)) return false;
+    if (statusFilter !== 'ALL' && tp.techStatus !== statusFilter) return false;
+    if (typeFilter !== 'ALL' && (tp.integration || 'unassigned') !== typeFilter) return false;
+    if (moduleFilter !== 'ALL' && tp.module !== moduleFilter) return false;
+    if (ownerFilter !== 'ALL') {
+        const rawOwner = tp.owner || '';
+        const ownerOnly = rawOwner.includes('(') ? rawOwner.split(' (')[0].trim() : rawOwner.trim();
+        if (ownerOnly !== ownerFilter) return false;
+    }
+    return true;
+};
+
+function clearPhase2Filters() {
+    const n = document.getElementById('p2-filter-name');
+    const s = document.getElementById('p2-filter-status');
+    const t = document.getElementById('p2-filter-type');
+    const m = document.getElementById('p2-filter-module');
+    const o = document.getElementById('p2-filter-owner');
+    if (n) n.value = '';
+    if (s) s.value = 'ALL';
+    if (t) t.value = 'ALL';
+    if (m) m.value = 'ALL';
+    if (o) o.value = 'ALL';
+    window._p2FilterSnapshot = { name: '', status: 'ALL', type: 'ALL', module: 'ALL', owner: 'ALL' };
+    // Close dropdown and re-render
+    const menu = document.getElementById('phase2FilterMenu');
+    if (menu) menu.classList.add('hidden');
+    populateTechTable();
+}
+
+// Called when user clicks "Apply" inside the filter dropdown
+function applyPhase2Filters() {
+    // Snapshot current selections so Cancel can restore them
+    window._p2FilterSnapshot = {
+        name: (document.getElementById('p2-filter-name')?.value || '').trim(),
+        status: document.getElementById('p2-filter-status')?.value || 'ALL',
+        type: document.getElementById('p2-filter-type')?.value || 'ALL',
+        module: document.getElementById('p2-filter-module')?.value || 'ALL',
+        owner: document.getElementById('p2-filter-owner')?.value || 'ALL'
+    };
+    // Close the dropdown
+    const menu = document.getElementById('phase2FilterMenu');
+    if (menu) menu.classList.add('hidden');
+    // Re-render table with filters
+    populateTechTable();
+}
+
+// Called when user clicks "Cancel" inside the filter dropdown
+function cancelPhase2Filters() {
+    // Revert inputs/selects to last-applied snapshot
+    const snap = window._p2FilterSnapshot;
+    const n = document.getElementById('p2-filter-name');
+    const s = document.getElementById('p2-filter-status');
+    const t = document.getElementById('p2-filter-type');
+    const m = document.getElementById('p2-filter-module');
+    const o = document.getElementById('p2-filter-owner');
+    if (n) n.value = snap.name;
+    if (s) s.value = snap.status;
+    if (t) t.value = snap.type;
+    if (m) m.value = snap.module;
+    if (o) o.value = snap.owner;
+    // Close the dropdown (no re-render, table stays as-is)
+    const menu = document.getElementById('phase2FilterMenu');
+    if (menu) menu.classList.add('hidden');
+}
+
+// Toggle the Filter dropdown panel open/closed
+function togglePhase2Filter(event) {
+    event.stopPropagation();
+    const menu = document.getElementById('phase2FilterMenu');
+    if (menu) menu.classList.toggle('hidden');
+    // Close Actions menu if open
+    const actionsMenu = document.getElementById('phase2ActionsMenu');
+    if (actionsMenu) actionsMenu.classList.add('hidden');
+}
+
+// Populate the Module + Owner filter dropdowns dynamically after data loads,
+// then restore all filter inputs from the snapshot so selections persist.
+function updatePhase2ModuleFilter() {
+    const moduleSelect = document.getElementById('p2-filter-module');
+    const ownerSelect = document.getElementById('p2-filter-owner');
+    const modules = new Set();
+    const owners = new Set();
+
+    // Collect ALL unique values from full dataset (not filtered subset)
+    Object.values(window.phase2DataMap).forEach(tp => {
+        if (tp.module && tp.module.trim()) modules.add(tp.module.trim());
+        const rawOwner = tp.owner || '';
+        const ownerOnly = rawOwner.includes('(') ? rawOwner.split(' (')[0].trim() : rawOwner.trim();
+        if (ownerOnly && ownerOnly !== 'Unassigned') owners.add(ownerOnly);
+    });
+
+    // Rebuild Module dropdown options
+    if (moduleSelect) {
+        let html = '<option value="ALL">All Modules</option>';
+        Array.from(modules).sort().forEach(m => {
+            html += `<option value="${m}">${m}</option>`;
+        });
+        moduleSelect.innerHTML = html;
+    }
+
+    // Rebuild Owner dropdown options
+    if (ownerSelect) {
+        let html = '<option value="ALL">All Owners</option>';
+        Array.from(owners).sort().forEach(o => {
+            html += `<option value="${o}">${o}</option>`;
+        });
+        ownerSelect.innerHTML = html;
+    }
+
+    // --- RESTORE all filter values from the snapshot ---
+    // This ensures that after dropdowns are rebuilt, previously-applied
+    // selections stay visible when the user re-opens the filter panel.
+    restorePhase2FilterSnapshot();
+}
+
+// Writes the snapshot values back into all filter DOM elements
+function restorePhase2FilterSnapshot() {
+    const snap = window._p2FilterSnapshot;
+    const n = document.getElementById('p2-filter-name');
+    const s = document.getElementById('p2-filter-status');
+    const t = document.getElementById('p2-filter-type');
+    const m = document.getElementById('p2-filter-module');
+    const o = document.getElementById('p2-filter-owner');
+    if (n) n.value = snap.name;
+    if (s) s.value = snap.status;
+    if (t) t.value = snap.type;
+    if (m) m.value = snap.module;
+    if (o) o.value = snap.owner;
+}
+
+// ==========================================
+// CLICK-OUTSIDE-CLOSE FOR DROPDOWNS
+// ==========================================
+function togglePhase2Actions(event) {
+    event.stopPropagation();
+    const menu = document.getElementById('phase2ActionsMenu');
+    if (menu) menu.classList.toggle('hidden');
+    // Close Filter menu if open
+    const filterMenu = document.getElementById('phase2FilterMenu');
+    if (filterMenu) filterMenu.classList.add('hidden');
+}
+
+document.addEventListener('click', function(e) {
+    // Close Actions menu
+    const actionsMenu = document.getElementById('phase2ActionsMenu');
+    const actionsWrapper = document.getElementById('phase2ActionsWrapper');
+    if (actionsMenu && actionsWrapper && !actionsWrapper.contains(e.target)) {
+        actionsMenu.classList.add('hidden');
+    }
+    // Close Filter menu
+    const filterMenu = document.getElementById('phase2FilterMenu');
+    const filterWrapper = document.getElementById('phase2FilterWrapper');
+    if (filterMenu && filterWrapper && !filterWrapper.contains(e.target)) {
+        filterMenu.classList.add('hidden');
+    }
+});

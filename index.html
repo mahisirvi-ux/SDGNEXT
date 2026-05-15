@@ -91,7 +91,7 @@
                             </div>
                         </button>
 
-                        <a href="/admin/migration-template" download class="w-full flex items-start gap-3 px-4 py-3 hover:bg-slate-50 transition-colors text-left" onclick="closeIdentitiesMenu()">
+                        <a href="#" onclick="downloadMigrationTemplate(); closeIdentitiesMenu(); return false;" class="w-full flex items-start gap-3 px-4 py-3 hover:bg-slate-50 transition-colors text-left">
                             <div class="w-8 h-8 rounded-md bg-emerald-50 text-emerald-600 flex items-center justify-center flex-shrink-0 mt-0.5">
                                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
                             </div>
@@ -184,471 +184,179 @@
             </div>
 
             <!-- ========================================== -->
-            <!-- PHASE 2: TECHNICAL BOARD (New)             -->
+            <!-- PHASE 2: TECHNICAL BOARD -->
             <!-- ========================================== -->
-            <div id="phase2-board" class="hidden w-full flex-col max-w-7xl mx-auto space-y-6">
+            <div id="phase2-board" class="hidden w-full flex-col max-w-7xl mx-auto space-y-5">
                 
-                <div class="grid grid-cols-2 md:grid-cols-6 gap-4 w-full">
-                    <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex flex-col items-center justify-center">
-                        <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1 text-center">Total Touchpoints</p>
-                        <h3 class="text-3xl font-black text-slate-800" id="tech-metric-total">0</h3>
+                <!-- KPI METRICS ROW -->
+                <div class="grid grid-cols-3 md:grid-cols-6 gap-3 w-full">
+                    <div class="relative overflow-hidden bg-white rounded-xl border border-slate-200 p-4 flex flex-col items-center justify-center">
+                        <div class="absolute top-0 left-0 w-full h-1 bg-slate-300"></div>
+                        <p class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Total</p>
+                        <h3 class="text-2xl font-black text-slate-800" id="tech-metric-total">0</h3>
                     </div>
-                    <div class="bg-white rounded-xl border border-amber-200 shadow-sm p-4 flex flex-col items-center justify-center">
-                        <p class="text-[10px] font-bold text-amber-500 uppercase tracking-wider mb-1 text-center">Pending Workshop</p>
-                        <h3 class="text-3xl font-black text-amber-600" id="tech-metric-pending">0</h3>
+                    <div class="relative overflow-hidden bg-white rounded-xl border border-amber-200 p-4 flex flex-col items-center justify-center">
+                        <div class="absolute top-0 left-0 w-full h-1 bg-amber-400"></div>
+                        <p class="text-[10px] font-semibold text-amber-600 uppercase tracking-wider mb-1">Pending</p>
+                        <h3 class="text-2xl font-black text-amber-600" id="tech-metric-pending">0</h3>
                     </div>
-                    <div class="bg-white rounded-xl border border-sky-200 shadow-sm p-4 flex flex-col items-center justify-center relative overflow-hidden">
-                        <div class="absolute top-0 left-0 w-full h-1 bg-sky-500"></div>
-                        <p class="text-[10px] font-bold text-sky-500 uppercase tracking-wider mb-1 text-center">Scheduled</p>
-                        <h3 class="text-3xl font-black text-sky-600" id="tech-metric-scheduled">0</h3>
+                    <div class="relative overflow-hidden bg-white rounded-xl border border-sky-200 p-4 flex flex-col items-center justify-center">
+                        <div class="absolute top-0 left-0 w-full h-1 bg-sky-400"></div>
+                        <p class="text-[10px] font-semibold text-sky-600 uppercase tracking-wider mb-1">Scheduled</p>
+                        <h3 class="text-2xl font-black text-sky-600" id="tech-metric-scheduled">0</h3>
                     </div>
-                    
-                    <div class="bg-white rounded-xl border border-purple-200 shadow-sm p-4 flex flex-col items-center justify-center relative overflow-hidden">
-                        <div class="absolute top-0 left-0 w-full h-1 bg-purple-500"></div>
-                        <p class="text-[10px] font-bold text-purple-500 uppercase tracking-wider mb-1 text-center">Rescheduled</p>
-                        <h3 class="text-3xl font-black text-purple-600" id="tech-metric-rescheduled">0</h3>
+                    <div class="relative overflow-hidden bg-white rounded-xl border border-purple-200 p-4 flex flex-col items-center justify-center">
+                        <div class="absolute top-0 left-0 w-full h-1 bg-purple-400"></div>
+                        <p class="text-[10px] font-semibold text-purple-600 uppercase tracking-wider mb-1">Rescheduled</p>
+                        <h3 class="text-2xl font-black text-purple-600" id="tech-metric-rescheduled">0</h3>
                     </div>
-
-                    <div class="bg-white rounded-xl border border-indigo-200 shadow-sm p-4 flex flex-col items-center justify-center relative overflow-hidden">
-                        <div class="absolute top-0 left-0 w-full h-1 bg-indigo-500"></div>
-                        <p class="text-[10px] font-bold text-indigo-500 uppercase tracking-wider mb-1 text-center">In Progress</p>
-                        <h3 class="text-3xl font-black text-indigo-600" id="tech-metric-inprogress">0</h3>
+                    <div class="relative overflow-hidden bg-white rounded-xl border border-blue-200 p-4 flex flex-col items-center justify-center">
+                        <div class="absolute top-0 left-0 w-full h-1 bg-blue-500"></div>
+                        <p class="text-[10px] font-semibold text-blue-600 uppercase tracking-wider mb-1">In Progress</p>
+                        <h3 class="text-2xl font-black text-blue-600" id="tech-metric-inprogress">0</h3>
                     </div>
-                    <div class="bg-white rounded-xl border border-red-200 shadow-sm p-4 flex flex-col items-center justify-center relative overflow-hidden">
+                    <div class="relative overflow-hidden bg-white rounded-xl border border-red-200 p-4 flex flex-col items-center justify-center">
                         <div class="absolute top-0 left-0 w-full h-1 bg-red-500"></div>
-                        <p class="text-[10px] font-bold text-red-500 uppercase tracking-wider mb-1 text-center">Delayed</p>
-                        <h3 class="text-3xl font-black text-red-600" id="tech-metric-delayed">0</h3>
+                        <p class="text-[10px] font-semibold text-red-600 uppercase tracking-wider mb-1">Delayed</p>
+                        <h3 class="text-2xl font-black text-red-600" id="tech-metric-delayed">0</h3>
                     </div>
                 </div>
-                <div id="tech-dashboard-view" class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden w-full block">
+
+                <!-- MAIN TABLE CARD -->
+                <div id="tech-dashboard-view" class="bg-white rounded-xl border border-slate-200 shadow-sm">
                     
-                    <div class="px-5 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-                        <h2 class="text-lg font-bold text-[#1a233a]">Phase 2: Technical IDR Status</h2>
-
-                        <div class="flex items-center gap-3">
-
+                                        <!-- HEADER BAR -->
+                    <div class="px-5 py-4 border-b border-slate-100 flex justify-between items-center">
+                        <div>
+                            <h2 class="text-base font-bold text-[#1a233a]">Technical Workshop Board</h2>
+                            <p class="text-[11px] text-slate-400 mt-0.5">Signed-off touchpoints progressing through technical design</p>
+                        </div>
+                                                <div class="flex items-center gap-2">
                             <!-- Phase 2 Filter Dropdown -->
-                            <div class="relative" id="phase2-filter-wrapper">
-                                <button id="phase2-filter-btn" onclick="togglePhase2FilterMenu(event)" class="bg-white hover:bg-slate-50 text-[#1a233a] border border-slate-300 text-sm font-semibold py-2 px-4 rounded-full shadow-sm transition-colors flex items-center gap-2">
-                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"></path>
-                                    </svg>
+                            <div class="relative" id="phase2FilterWrapper">
+                                <button onclick="togglePhase2Filter(event)" class="inline-flex items-center gap-2 px-3 py-2 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-lg transition-colors">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"></path></svg>
                                     Filter
-                                    <span id="phase2-filter-count" class="hidden bg-pink-500 text-white text-[10px] font-bold rounded-full px-2 py-0.5 leading-none">0</span>
-                                    <svg id="phase2-filter-caret" class="w-4 h-4 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
-                                    </svg>
+                                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
                                 </button>
-
-                                <div id="phase2-filter-menu" class="hidden absolute right-0 mt-2 w-96 bg-white border border-slate-200 rounded-xl shadow-xl z-30 overflow-hidden">
-                                    <div class="px-4 py-2.5 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
-                                        <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Filter Touchpoints</p>
+                                                                <div id="phase2FilterMenu" class="hidden absolute right-0 mt-2 w-72 bg-white border border-slate-200 rounded-xl shadow-xl z-50 overflow-hidden">
+                                    <div class="px-4 py-2 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
+                                        <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Filter Columns</span>
                                         <button onclick="clearPhase2Filters()" class="text-[10px] font-bold text-pink-500 hover:text-pink-700 uppercase tracking-wider">Clear All</button>
                                     </div>
-
                                     <div class="p-4 space-y-3 max-h-[60vh] overflow-y-auto">
-
                                         <div>
-                                            <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Touchpoint Name</label>
-                                            <input type="text" id="p2-filter-name" placeholder="Search by name..." class="w-full text-sm border border-slate-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-pink-500">
+                                            <label class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Touchpoint Name</label>
+                                            <input type="text" id="p2-filter-name" placeholder="Search by name..." class="w-full text-[11px] border border-slate-200 bg-white rounded-md px-2 py-1.5 text-slate-600 shadow-sm focus:ring-1 focus:ring-indigo-400 focus:border-indigo-400">
                                         </div>
-
-                                        <div class="grid grid-cols-2 gap-3">
-                                            <div>
-                                                <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Module</label>
-                                                <select id="p2-filter-module" class="w-full text-sm border border-slate-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-pink-500 bg-white">
-                                                    <option value="ALL">All Modules</option>
-                                                </select>
-                                            </div>
-                                            <div>
-                                                <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Integration Type</label>
-                                                <select id="p2-filter-integration" class="w-full text-sm border border-slate-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-pink-500 bg-white">
-                                                    <option value="ALL">All Types</option>
-                                                    <option value="api">API</option>
-                                                    <option value="database">Database</option>
-                                                    <option value="unassigned">Unassigned</option>
-                                                </select>
-                                            </div>
-                                        </div>
-
-                                        <div class="grid grid-cols-2 gap-3">
-                                            <div>
-                                                <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Source System</label>
-                                                <select id="p2-filter-source" class="w-full text-sm border border-slate-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-pink-500 bg-white">
-                                                    <option value="ALL">All Source Systems</option>
-                                                </select>
-                                            </div>
-                                            <div>
-                                                <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Owner</label>
-                                                <select id="p2-filter-owner" class="w-full text-sm border border-slate-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-pink-500 bg-white">
-                                                    <option value="ALL">All Owners</option>
-                                                </select>
-                                            </div>
-                                        </div>
-
                                         <div>
-                                            <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Status</label>
-                                            <select id="p2-filter-status" class="w-full text-sm border border-slate-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-pink-500 bg-white">
+                                            <label class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Module</label>
+                                            <select id="p2-filter-module" class="w-full text-[11px] border border-slate-200 bg-white rounded-md px-2 py-1.5 text-slate-600 shadow-sm cursor-pointer">
+                                                <option value="ALL">All Modules</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Type</label>
+                                            <select id="p2-filter-type" class="w-full text-[11px] border border-slate-200 bg-white rounded-md px-2 py-1.5 text-slate-600 shadow-sm cursor-pointer">
+                                                <option value="ALL">All Types</option>
+                                                <option value="api">API</option>
+                                                <option value="database">Database</option>
+                                                <option value="unassigned">Unassigned</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Owner</label>
+                                            <select id="p2-filter-owner" class="w-full text-[11px] border border-slate-200 bg-white rounded-md px-2 py-1.5 text-slate-600 shadow-sm cursor-pointer">
+                                                <option value="ALL">All Owners</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Status</label>
+                                            <select id="p2-filter-status" class="w-full text-[11px] border border-slate-200 bg-white rounded-md px-2 py-1.5 text-slate-600 shadow-sm cursor-pointer">
                                                 <option value="ALL">All Statuses</option>
                                                 <option value="Pending Workshop">Pending Workshop</option>
                                                 <option value="Scheduled">Scheduled</option>
                                                 <option value="In Progress">In Progress</option>
                                                 <option value="Delayed">Delayed</option>
-                                                <option value="Rescheduled">Rescheduled</option>
                                                 <option value="Completed">Completed</option>
+                                                <option value="Rescheduled">Rescheduled</option>
                                             </select>
                                         </div>
-
-                                        <div>
-                                            <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Start Date Range</label>
-                                            <div class="grid grid-cols-2 gap-2">
-                                                <input type="date" id="p2-filter-start-from" class="w-full text-sm border border-slate-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-pink-500" title="From">
-                                                <input type="date" id="p2-filter-start-to" class="w-full text-sm border border-slate-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-pink-500" title="To">
-                                            </div>
-                                        </div>
-
-                                        <div>
-                                            <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">End Date Range</label>
-                                            <div class="grid grid-cols-2 gap-2">
-                                                <input type="date" id="p2-filter-end-from" class="w-full text-sm border border-slate-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-pink-500" title="From">
-                                                <input type="date" id="p2-filter-end-to" class="w-full text-sm border border-slate-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-pink-500" title="To">
-                                            </div>
-                                        </div>
-
                                     </div>
-
-                                    <div class="px-4 py-3 bg-slate-50 border-t border-slate-100 flex justify-end gap-2">
-                                        <button onclick="closePhase2FilterMenu()" class="text-sm font-semibold text-slate-600 hover:text-slate-800 px-4 py-2">Cancel</button>
-                                        <button onclick="applyPhase2Filters()" class="bg-[#1a233a] hover:bg-slate-800 text-white text-sm font-semibold py-2 px-5 rounded-md shadow-sm transition-colors">Apply</button>
+                                    <div class="px-4 py-2.5 bg-slate-50 border-t border-slate-100 flex items-center gap-2">
+                                        <button onclick="applyPhase2Filters()" class="flex-1 text-[11px] font-semibold text-white bg-[#1a233a] hover:bg-slate-800 rounded-md py-1.5 transition-colors">Apply</button>
+                                        <button onclick="cancelPhase2Filters()" class="flex-1 text-[11px] font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-md py-1.5 transition-colors">Cancel</button>
                                     </div>
                                 </div>
                             </div>
-
                             <!-- Phase 2 Actions Dropdown -->
-                            <div class="relative" id="phase2-actions-wrapper">
-                                <button id="phase2-actions-btn" onclick="togglePhase2Menu(event)" class="bg-[#1a233a] hover:bg-slate-800 text-white text-sm font-semibold py-2 px-4 rounded-full shadow-md transition-colors flex items-center gap-2">
-                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
-                                    </svg>
-                                    Phase 2 Actions
-                                    <svg id="phase2-actions-caret" class="w-4 h-4 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
-                                    </svg>
+                            <div class="relative" id="phase2ActionsWrapper">
+                                <button onclick="togglePhase2Actions(event)" class="inline-flex items-center gap-2 px-3 py-2 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-lg transition-colors">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                                    Actions
+                                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
                                 </button>
-
-                            <div id="phase2-actions-menu" class="hidden absolute right-0 mt-2 w-72 bg-white border border-slate-200 rounded-xl shadow-xl z-30 overflow-hidden">
-                                <div class="px-4 py-2.5 bg-slate-50 border-b border-slate-100">
-                                    <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Workflow Actions</p>
+                                <div id="phase2ActionsMenu" class="hidden absolute right-0 mt-2 w-56 bg-white border border-slate-200 rounded-xl shadow-xl z-50 py-2">
+                                    <button id="btn-send-invites" onclick="triggerWorkshopInvites(); document.getElementById('phase2ActionsMenu').classList.add('hidden');" class="w-full text-left px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3">
+                                        <svg class="w-4 h-4 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
+                                        Send Workshop Invites
+                                    </button>
+                                    <button id="sendApiTemplatesBtn" onclick="triggerApiRequirementTemplates(); document.getElementById('phase2ActionsMenu').classList.add('hidden');" class="w-full text-left px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3">
+                                        <svg class="w-4 h-4 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                                        Send RGT Templates
+                                    </button>
+                                    <button id="syncInboxBtn" onclick="triggerInboxSync(); document.getElementById('phase2ActionsMenu').classList.add('hidden');" class="w-full text-left px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3">
+                                        <svg class="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                                        Sync Inbox Replies
+                                    </button>
                                 </div>
-
-                                <button id="btn-send-invites" onclick="triggerWorkshopInvites(); closePhase2Menu();" class="w-full flex items-start gap-3 px-4 py-3 hover:bg-slate-50 transition-colors text-left border-b border-slate-100">
-                                    <div class="w-8 h-8 rounded-md bg-indigo-50 text-indigo-600 flex items-center justify-center flex-shrink-0 mt-0.5">
-                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
-                                    </div>
-                                    <div class="flex-1">
-                                        <p class="text-sm font-semibold text-[#1a233a]">Send Tomorrow's Invites</p>
-                                        <p class="text-xs text-slate-500 mt-0.5">Workshop invites to scheduled teams</p>
-                                    </div>
-                                </button>
-
-                                <button id="sendApiTemplatesBtn" onclick="triggerApiRequirementTemplates(); closePhase2Menu();" class="w-full flex items-start gap-3 px-4 py-3 hover:bg-slate-50 transition-colors text-left border-b border-slate-100">
-                                    <div class="w-8 h-8 rounded-md bg-blue-50 text-blue-600 flex items-center justify-center flex-shrink-0 mt-0.5">
-                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
-                                    </div>
-                                    <div class="flex-1">
-                                        <p class="text-sm font-semibold text-[#1a233a]">Send API Templates</p>
-                                        <p class="text-xs text-slate-500 mt-0.5">RGT documents for tomorrow's APIs</p>
-                                    </div>
-                                </button>
-
-                                <button id="syncInboxBtn" onclick="triggerInboxSync(); closePhase2Menu();" class="w-full flex items-start gap-3 px-4 py-3 hover:bg-slate-50 transition-colors text-left">
-                                    <div class="w-8 h-8 rounded-md bg-emerald-50 text-emerald-600 flex items-center justify-center flex-shrink-0 mt-0.5">
-                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
-                                    </div>
-                                    <div class="flex-1">
-                                        <p class="text-sm font-semibold text-[#1a233a]">Sync Bank Replies</p>
-                                        <p class="text-xs text-slate-500 mt-0.5">Scan inbox for returned templates</p>
-                                    </div>
-                                </button>
                             </div>
                         </div>
-
-                        </div> <!-- /flex wrapper for Filter + Actions -->
                     </div>
 
-                    <!-- Phase 2 Dropdown behavior (open/close + click-outside) -->
-                    <script>
-                        // ==========================================
-                        // MANAGE IDENTITIES DROPDOWN (header)
-                        // ==========================================
-                        function toggleIdentitiesMenu(e) {
-                            if (e) e.stopPropagation();
-                            const menu = document.getElementById('manage-identities-menu');
-                            const caret = document.getElementById('manage-identities-caret');
-                            if (!menu) return;
-                            if (menu.classList.contains('hidden')) {
-                                menu.classList.remove('hidden');
-                                if (caret) caret.classList.add('rotate-180');
-                            } else {
-                                closeIdentitiesMenu();
-                            }
-                        }
-                        function closeIdentitiesMenu() {
-                            const menu = document.getElementById('manage-identities-menu');
-                            const caret = document.getElementById('manage-identities-caret');
-                            if (menu) menu.classList.add('hidden');
-                            if (caret) caret.classList.remove('rotate-180');
-                        }
-                        document.addEventListener('click', (e) => {
-                            const wrapper = document.getElementById('manage-identities-wrapper');
-                            if (wrapper && !wrapper.contains(e.target)) closeIdentitiesMenu();
-                        });
-
-                        function togglePhase2Menu(e) {
-                            if (e) e.stopPropagation();
-                            const menu = document.getElementById('phase2-actions-menu');
-                            const caret = document.getElementById('phase2-actions-caret');
-                            if (!menu) return;
-                            const isHidden = menu.classList.contains('hidden');
-                            if (isHidden) {
-                                menu.classList.remove('hidden');
-                                if (caret) caret.classList.add('rotate-180');
-                            } else {
-                                closePhase2Menu();
-                            }
-                        }
-                        function closePhase2Menu() {
-                            const menu = document.getElementById('phase2-actions-menu');
-                            const caret = document.getElementById('phase2-actions-caret');
-                            if (menu) menu.classList.add('hidden');
-                            if (caret) caret.classList.remove('rotate-180');
-                        }
-                        document.addEventListener('click', (e) => {
-                            const wrapper = document.getElementById('phase2-actions-wrapper');
-                            if (wrapper && !wrapper.contains(e.target)) closePhase2Menu();
-                        });
-                        document.addEventListener('keydown', (e) => {
-                            if (e.key === 'Escape') {
-                                closePhase2Menu();
-                                closePhase2FilterMenu();
-                                closeIdentitiesMenu();
-                            }
-                        });
-
-                        // ==========================================
-                        // PHASE 2 FILTER DROPDOWN LOGIC
-                        // ==========================================
-                        window.phase2Filters = {
-                            name: '',
-                            module: 'ALL',
-                            source: 'ALL',
-                            integration: 'ALL',
-                            owner: 'ALL',
-                            status: 'ALL',
-                            startFrom: '',
-                            startTo: '',
-                            endFrom: '',
-                            endTo: ''
-                        };
-
-                        function togglePhase2FilterMenu(e) {
-                            if (e) e.stopPropagation();
-                            const menu = document.getElementById('phase2-filter-menu');
-                            const caret = document.getElementById('phase2-filter-caret');
-                            if (!menu) return;
-                            const isHidden = menu.classList.contains('hidden');
-                            if (isHidden) {
-                                populatePhase2FilterDropdowns();
-                                menu.classList.remove('hidden');
-                                if (caret) caret.classList.add('rotate-180');
-                            } else {
-                                closePhase2FilterMenu();
-                            }
-                        }
-
-                        function closePhase2FilterMenu() {
-                            const menu = document.getElementById('phase2-filter-menu');
-                            const caret = document.getElementById('phase2-filter-caret');
-                            if (menu) menu.classList.add('hidden');
-                            if (caret) caret.classList.remove('rotate-180');
-                        }
-
-                        document.addEventListener('click', (e) => {
-                            const wrapper = document.getElementById('phase2-filter-wrapper');
-                            if (wrapper && !wrapper.contains(e.target)) closePhase2FilterMenu();
-                        });
-
-                        // Build Module + Source System + Owner dropdowns from current data each time the menu opens
-                        function populatePhase2FilterDropdowns() {
-                            const data = window.phase2DataMap ? Object.values(window.phase2DataMap) : [];
-                            const modules = new Set();
-                            const sources = new Set();
-                            const owners = new Set();
-
-                            data.forEach(tp => {
-                                if (tp.module && tp.module.trim()) modules.add(tp.module.trim());
-                                if (tp.source_system && tp.source_system.trim() && tp.source_system.trim() !== '-') {
-                                    sources.add(tp.source_system.trim());
-                                }
-                                const rawOwner = tp.owner || '';
-                                // Strip "(Dept)" suffix the way populateTechTable does for display
-                                const ownerOnly = rawOwner.includes('(') ? rawOwner.split(' (')[0].trim() : rawOwner.trim();
-                                if (ownerOnly) owners.add(ownerOnly);
-                            });
-
-                            const fillSelect = (id, items, defaultLabel) => {
-                                const select = document.getElementById(id);
-                                if (!select) return;
-                                const current = select.value;
-                                let html = `<option value="ALL">${defaultLabel}</option>`;
-                                Array.from(items).sort().forEach(item => {
-                                    html += `<option value="${item}">${item}</option>`;
-                                });
-                                select.innerHTML = html;
-                                if (current && (current === 'ALL' || items.has(current))) select.value = current;
-                            };
-
-                            fillSelect('p2-filter-module', modules, 'All Modules');
-                            fillSelect('p2-filter-source', sources, 'All Source Systems');
-                            fillSelect('p2-filter-owner', owners, 'All Owners');
-                        }
-
-                        function applyPhase2Filters() {
-                            window.phase2Filters = {
-                                name: (document.getElementById('p2-filter-name').value || '').trim().toLowerCase(),
-                                module: document.getElementById('p2-filter-module').value || 'ALL',
-                                source: document.getElementById('p2-filter-source').value || 'ALL',
-                                integration: document.getElementById('p2-filter-integration').value || 'ALL',
-                                owner: document.getElementById('p2-filter-owner').value || 'ALL',
-                                status: document.getElementById('p2-filter-status').value || 'ALL',
-                                startFrom: document.getElementById('p2-filter-start-from').value || '',
-                                startTo: document.getElementById('p2-filter-start-to').value || '',
-                                endFrom: document.getElementById('p2-filter-end-from').value || '',
-                                endTo: document.getElementById('p2-filter-end-to').value || ''
-                            };
-                            updatePhase2FilterBadge();
-                            closePhase2FilterMenu();
-                            // Trigger the table re-render. The table already has data cached in phase2DataMap,
-                            // so we just re-run populateTechTable which will pick up the new filters.
-                            if (typeof populateTechTable === 'function') populateTechTable();
-                        }
-
-                        function clearPhase2Filters() {
-                            document.getElementById('p2-filter-name').value = '';
-                            document.getElementById('p2-filter-module').value = 'ALL';
-                            document.getElementById('p2-filter-source').value = 'ALL';
-                            document.getElementById('p2-filter-integration').value = 'ALL';
-                            document.getElementById('p2-filter-owner').value = 'ALL';
-                            document.getElementById('p2-filter-status').value = 'ALL';
-                            document.getElementById('p2-filter-start-from').value = '';
-                            document.getElementById('p2-filter-start-to').value = '';
-                            document.getElementById('p2-filter-end-from').value = '';
-                            document.getElementById('p2-filter-end-to').value = '';
-                            window.phase2Filters = {
-                                name: '', module: 'ALL', source: 'ALL', integration: 'ALL', owner: 'ALL', status: 'ALL',
-                                startFrom: '', startTo: '', endFrom: '', endTo: ''
-                            };
-                            updatePhase2FilterBadge();
-                            if (typeof populateTechTable === 'function') populateTechTable();
-                        }
-
-                        function updatePhase2FilterBadge() {
-                            const f = window.phase2Filters;
-                            let count = 0;
-                            if (f.name) count++;
-                            if (f.module !== 'ALL') count++;
-                            if (f.source !== 'ALL') count++;
-                            if (f.integration !== 'ALL') count++;
-                            if (f.owner !== 'ALL') count++;
-                            if (f.status !== 'ALL') count++;
-                            if (f.startFrom || f.startTo) count++;
-                            if (f.endFrom || f.endTo) count++;
-
-                            const badge = document.getElementById('phase2-filter-count');
-                            if (!badge) return;
-                            if (count > 0) {
-                                badge.innerText = count;
-                                badge.classList.remove('hidden');
-                            } else {
-                                badge.classList.add('hidden');
-                            }
-                        }
-
-                        // Predicate used by populateTechTable to decide whether to render a row
-                        window.matchesPhase2Filters = function(tp) {
-                            const f = window.phase2Filters || {};
-                            if (f.name && !(tp.name || '').toLowerCase().includes(f.name)) return false;
-                            if (f.module && f.module !== 'ALL' && tp.module !== f.module) return false;
-                            if (f.source && f.source !== 'ALL' && (tp.source_system || '').trim() !== f.source) return false;
-                            if (f.integration && f.integration !== 'ALL') {
-                                if ((tp.integration || 'unassigned').toLowerCase() !== f.integration.toLowerCase()) return false;
-                            }
-                            if (f.owner && f.owner !== 'ALL') {
-                                const rawOwner = tp.owner || '';
-                                const ownerOnly = rawOwner.includes('(') ? rawOwner.split(' (')[0].trim() : rawOwner.trim();
-                                if (ownerOnly !== f.owner) return false;
-                            }
-                            if (f.status && f.status !== 'ALL' && tp.techStatus !== f.status) return false;
-                            // Date ranges (inclusive). tp.start / tp.end now arrive as "YYYY-MM-DD HH:MM";
-                            // compare only the date portion against the filter date values.
-                            const startDateOnly = (tp.start || '').split(' ')[0];
-                            const endDateOnly   = (tp.end   || '').split(' ')[0];
-                            if (f.startFrom && (!startDateOnly || startDateOnly < f.startFrom)) return false;
-                            if (f.startTo && (!startDateOnly || startDateOnly > f.startTo)) return false;
-                            if (f.endFrom && (!endDateOnly || endDateOnly < f.endFrom)) return false;
-                            if (f.endTo && (!endDateOnly || endDateOnly > f.endTo)) return false;
-                            return true;
-                        };
-                    </script>
-                    <div id="dispatchStatusMessage" style="display: none; padding: 10px; margin-top: 15px; border-radius: 4px; font-weight: bold;"></div>
-                    <div class="overflow-x-auto w-full">
-                        <table class="w-full text-left border-collapse" id="technical-table">
+                                        <!-- TABLE -->
+                    <div class="overflow-x-auto rounded-b-xl">
+                        <table class="w-full text-left" id="technical-table">
                             <thead>
-                                <tr class="bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-500 uppercase tracking-wider">
-                                    <th class="px-5 py-3">Touchpoint Name</th>
-                                    <th class="px-5 py-3">Module</th>
-                                    <th class="px-5 py-3">Source System</th>
-                                    <th class="px-5 py-3">Integration Type</th>                                
-                                    <th class="px-5 py-3">Owner</th>
-                                    <th class="px-5 py-3">Start Date</th>
-                                    <th class="px-5 py-3">End Date</th>
-                                    <th class="px-5 py-3">Status</th>
-                                    <th class="px-5 py-3 text-right">Action</th>
+                                <tr class="bg-slate-50/80 border-b border-slate-200">
+                                    <th class="px-5 py-3 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Touchpoint</th>
+                                    <th class="px-4 py-3 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Module</th>
+                                    <th class="px-4 py-3 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Type</th>
+                                    <th class="px-4 py-3 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Owner</th>
+                                    <th class="px-4 py-3 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Schedule</th>
+                                    <th class="px-4 py-3 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Status</th>
+                                    <th class="px-4 py-3 text-[10px] font-semibold text-slate-500 uppercase tracking-wider text-center"></th>
                                 </tr>
                             </thead>
-                            <tbody id="tech-table-body" class="divide-y divide-slate-100">
-                                </tbody>
+                            <tbody id="tech-table-body" class="divide-y divide-slate-50">
+                            </tbody>
                         </table>
                     </div>
                 </div>
 
+                <!-- DETAIL VIEW (hidden by default) -->
                 <div id="tech-detail-view" class="hidden bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                    <div class="px-5 py-4 border-b border-slate-100 flex items-center bg-slate-50">
-                        <button onclick="closeTechDetail()" class="mr-4 text-slate-400 hover:text-slate-600 bg-white border border-slate-200 rounded p-1.5 shadow-sm transition-colors">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
-                        </button>
+                    <div class="px-6 py-5 border-b border-slate-100 flex justify-between items-center bg-gradient-to-r from-slate-50 to-white">
                         <div>
-                            <h2 id="tech-detail-title" class="text-xl font-bold text-[#1a233a]">Touchpoint Name</h2>
-                            <p id="tech-detail-module" class="text-sm text-slate-500">Module</p>
+                            <h2 class="text-lg font-bold text-[#1a233a]" id="tech-detail-title">Touchpoint Name</h2>
+                            <p class="text-xs text-slate-500 mt-1" id="tech-detail-module">Module: -</p>
                         </div>
+                        <button onclick="closeTechDetail()" class="text-slate-400 hover:text-red-500 transition-colors p-2 rounded-lg hover:bg-red-50">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                        </button>
                     </div>
-                    
                     <div class="p-6">
-                        <div class="mb-6 border-b border-slate-100 pb-6">
-                            <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Integration Approach</label>
-                            <select id="tech-integration-type" onchange="renderTechFields()" class="w-full max-w-md text-sm border-slate-300 rounded-md p-2.5 focus:ring-pink-500 focus:border-pink-500 shadow-sm">
-                                <option value="unassigned">Unassigned</option>
-                                <option value="api">API</option>
-                                <option value="database">Database</option>
-                                <option value="batch">Batch Job</option>
-                            </select>
-                        </div>
-
-                        <div id="dynamic-tech-fields" class="bg-slate-50 border border-slate-200 rounded-lg p-5 mb-6">
-                            </div>
-
-                        <div class="flex justify-end">
-                            <button onclick="saveTechDetails()" class="bg-[#1a233a] hover:bg-slate-800 text-white font-bold py-2.5 px-6 rounded-md shadow-md transition-all">Save Technical Blueprint</button>
+                        <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Integration Approach</label>
+                        <select id="tech-integration-type" onchange="renderTechFields(window.phase2DataMap[window.currentEditingTechId]?.techDetails || {})" class="w-full max-w-xs text-sm border border-slate-300 rounded-lg p-2.5 bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 shadow-sm">
+                            <option value="unassigned">Select Type...</option>
+                            <option value="api">API Integration</option>
+                            <option value="database">Database Integration</option>
+                            <option value="batch">Batch / File Transfer</option>
+                        </select>
+                        <div id="dynamic-tech-fields" class="mt-6"></div>
+                        <div class="mt-8 flex justify-end gap-3 border-t border-slate-100 pt-5">
+                            <button onclick="closeTechDetail()" class="px-4 py-2 text-sm font-medium text-slate-600 bg-slate-100 rounded-lg hover:bg-slate-200 transition-colors">Cancel</button>
+                            <button onclick="saveTechDetails()" class="px-5 py-2 text-sm font-semibold text-white bg-[#1a233a] rounded-lg hover:bg-slate-800 transition-colors shadow-sm">Save Blueprint</button>
                         </div>
                     </div>
                 </div>
@@ -693,9 +401,9 @@
                     <h4 class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Source / Target</h4>
                     <p class="text-sm font-semibold text-[#1a233a] mt-1"><span id="flyout-source"></span> &rarr; <span id="flyout-target"></span></p>
                 </div>
-                <div>
+                                <div>
                     <h4 class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Owner / Dept</h4>
-                    <p class="text-sm font-semibold text-[#1a233a] mt-1"><span id="flyout-owner"></span> (<span id="flyout-dept"></span>)</p>
+                    <p id="flyout-owner" class="text-sm font-semibold text-[#1a233a] mt-1">-</p>
                 </div>
                 <div>
                     <h4 class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Inputs</h4>

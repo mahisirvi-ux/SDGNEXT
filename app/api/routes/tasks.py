@@ -30,17 +30,22 @@ class ActionLogCreate(BaseModel):
 
 
 # ============================================================
-# Dropdown LOV — now backed by the new identity model
+# Dropdown LOV — project-scoped identity model
 # ============================================================
+@router.get("/pending-options/{project_name}")
+def get_pending_options_by_project(project_name: str, db: Session = Depends(get_db)):
+    """Returns active team members for the Pending With dropdown, scoped to a project."""
+    project = db.query(Project).filter(Project.project_name == project_name).first()
+    project_id = project.id if project else None
+    return list_active_members_with_dept(db, project_id=project_id)
+
+
 @router.get("/pending-options")
 def get_pending_options(db: Session = Depends(get_db)):
-    """Returns active team members for the Pending With dropdown.
-
-    Response shape (new): a list of {full_name, display_with_dept, dept_id, ...}.
-    Legacy frontends that expect a flat list of strings should fall through
-    to .full_name; the new UI uses display_with_dept for the option label.
+    """Fallback: Returns all active team members (no project filter).
+    Kept for backward compatibility with older frontend code.
     """
-    return list_active_members_with_dept(db)
+    return list_active_members_with_dept(db, project_id=None)
 
 
 # ============================================================
@@ -56,7 +61,7 @@ def get_tasks_by_project(project_name: str, db: Session = Depends(get_db)):
         db.query(IntegrationTouchpoint)
         .filter(IntegrationTouchpoint.project_id == project.id)
         .all()
-    )
+        )
 
     # Per-request cache for owner-label enrichment, so a project with 100 rows
     # that all share 5 owners only hits team_master 5 times.
@@ -100,19 +105,18 @@ def get_tasks_by_project(project_name: str, db: Session = Depends(get_db)):
             "technical_owner": tech_owner_raw,
             "owner": owner_raw,
             "pending_with": pending_raw,
-            # NEW: enriched 'with department' displays for the new UI
-            "owner_display": enrich_owner_label(db, owner_raw, _cache=enrich_cache),
-            "module_owner_display": enrich_owner_label(db, mod_owner_raw, _cache=enrich_cache),
-            "technical_owner_display": enrich_owner_label(db, tech_owner_raw, _cache=enrich_cache),
-            "pending_with_display": enrich_owner_label(db, pending_raw, _cache=enrich_cache),
+            # Enriched 'with department' displays for the UI (project-scoped)
+            "owner_display": enrich_owner_label(db, owner_raw, project_id=project.id, _cache=enrich_cache),
+            "module_owner_display": enrich_owner_label(db, mod_owner_raw, project_id=project.id, _cache=enrich_cache),
+            "technical_owner_display": enrich_owner_label(db, tech_owner_raw, project_id=project.id, _cache=enrich_cache),
+            "pending_with_display": enrich_owner_label(db, pending_raw, project_id=project.id, _cache=enrich_cache),
             "business_flow": func.business_flow if func else None,
             "direction": func.integration_direction if func else None,
             "source_system": func.source_system if func else None,
             "target_system": func.target_system if func else None,
             "idr_status": func.idr_status if func and func.idr_status else "In-Progress",
-            "inputs": func.inputs if func else None,
+                        "inputs": func.inputs if func else None,
             "expected_output": func.expected_output if func else None,
-            "business_department": func.business_department if func else None,
             "idr_signoff_date": func.idr_signoff_date if func else None,
             "open_pointers": func.open_pointers if func else None,
             "remarks_timeline": remarks_timeline,
@@ -127,7 +131,7 @@ def get_tasks_by_project(project_name: str, db: Session = Depends(get_db)):
 # ============================================================
 @router.post("/tasks/{touchpoint_id}/log")
 def add_action_log(touchpoint_id: int, log_data: ActionLogCreate,
-                   db: Session = Depends(get_db)):
+                                      db: Session = Depends(get_db)):
     func_record = db.query(IDRFunctional).filter(
         IDRFunctional.touchpoint_id == touchpoint_id
     ).first()
@@ -140,12 +144,17 @@ def add_action_log(touchpoint_id: int, log_data: ActionLogCreate,
             if log_data.new_status == "Signed-Off" and not func_record.idr_signoff_date:
                 func_record.idr_signoff_date = str(date.today())
 
-        # --- Validate and persist Pending With ---
+        # --- Validate and persist Pending With (project-scoped) ---
         if log_data.pending_with is not None:
             if log_data.pending_with.strip() == "":
                 func_record.pending_with = None  # clear
             else:
-                resolved, warn = resolve_pending_with(db, log_data.pending_with)
+                # Resolve project_id from the touchpoint for scoped validation
+                tp = db.query(IntegrationTouchpoint).filter(
+                    IntegrationTouchpoint.id == touchpoint_id
+                ).first()
+                proj_id = tp.project_id if tp else None
+                resolved, warn = resolve_pending_with(db, log_data.pending_with, project_id=proj_id)
                 func_record.pending_with = resolved  # falls back to raw on miss
                 if warn:
                     warnings.append(warn)

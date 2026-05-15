@@ -15,6 +15,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     } else {
         showEmptyState();
     }
+    // Handle navigation from details page with phase preference
+    const savedPhase = localStorage.getItem('activePhase');
+    if (savedPhase) {
+        localStorage.removeItem('activePhase');
+        setTimeout(() => {
+            if (typeof switchPhase === 'function') {
+                switchPhase(parseInt(savedPhase));
+            }
+        }, 300);
+    }
 
     // Listeners
     projectSelector.addEventListener('change', (e) => {
@@ -101,13 +111,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
-    // Departments
+        // Departments
     const departmentsInput = document.getElementById('departmentsCsvInput');
     if (departmentsInput) {
         departmentsInput.addEventListener('change', async (e) => {
             const file = e.target.files[0];
             if (!file) return;
-            await uploadIdentityCsv(file, '/upload-departments', 'Departments');
+            const project = document.getElementById('projectSelector')?.value;
+            if (!project) { alert('Please select a project first!'); departmentsInput.value = ''; return; }
+            await uploadIdentityCsv(file, `/upload-departments/${project}`, 'Departments');
             departmentsInput.value = '';
         });
     }
@@ -118,7 +130,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         teamMembersInput.addEventListener('change', async (e) => {
             const file = e.target.files[0];
             if (!file) return;
-            await uploadIdentityCsv(file, '/upload-team-members', 'Team Members');
+            const project = document.getElementById('projectSelector')?.value;
+            if (!project) { alert('Please select a project first!'); teamMembersInput.value = ''; return; }
+            await uploadIdentityCsv(file, `/upload-team-members/${project}`, 'Team Members');
             teamMembersInput.value = '';
         });
     }
@@ -170,7 +184,9 @@ async function populateProjectsDropdown(selector) {
 
 async function loadPendingOptions() {
     try {
-        const response = await fetch('/pending-options');
+        const project = document.getElementById('projectSelector')?.value;
+        const url = project ? `/pending-options/${project}` : '/pending-options';
+        const response = await fetch(url);
         if (!response.ok) return;
 
         const options = await response.json();
@@ -397,8 +413,7 @@ window.openFlyout = function(dataIndex) {
 
     // Owner: prefer the enriched 'Name (Department)' from the new identity model,
     // fall back to raw owner if backend predates the refactor.
-    setVal('flyout-owner', data.owner_display || data.owner || 'Unassigned');
-    setVal('flyout-dept', data.business_department || '-');
+        setVal('flyout-owner', data.owner_display || data.owner || 'Unassigned');
     setVal('flyout-inputs', data.inputs || '-');
     setVal('flyout-outputs', data.expected_output || '-');
     // Pending: same enrichment treatment so the badge reads 'Rahul (CBS)'.
@@ -576,7 +591,7 @@ window.switchPhase = function(phaseNumber) {
         window.phase2DataMap = {};
         const tbody = document.getElementById('tech-table-body');
         if (tbody) {
-            tbody.innerHTML = '<tr><td colspan="9" class="px-5 py-8 text-center text-sm font-medium text-slate-400">Loading Phase 2 data...</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="7" class="px-5 py-12 text-center text-sm font-medium text-slate-400">Loading Phase 2 data...</td></tr>';
         }
         ['tech-metric-total','tech-metric-pending','tech-metric-scheduled',
          'tech-metric-rescheduled','tech-metric-inprogress','tech-metric-delayed'].forEach(id => {
@@ -674,4 +689,13 @@ window.downloadReport = function() {
     // This tells the browser to navigate to the download link, 
     // which triggers the "Save As..." dialog without leaving the page!
     window.open(`/tasks/${projectSelector.value}/export`, '_blank');
+};
+
+window.downloadMigrationTemplate = function() {
+    const projectSelector = document.getElementById('projectSelector');
+    if (!projectSelector || !projectSelector.value) {
+        alert("Please select a project first!");
+        return;
+    }
+    window.open(`/admin/migration-template/${projectSelector.value}`, '_blank');
 };

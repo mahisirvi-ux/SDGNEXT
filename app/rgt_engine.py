@@ -60,20 +60,43 @@ def generate_rgt(touchpoint_data: dict) -> BytesIO:
     )
     doc.add_paragraph("\n")
 
-    # ==========================================
-    # THE STRICT 2-COLUMN TABLE
-    # ==========================================
-    # Define our schema: (Key, Pre-filled Value, Is_Editable by Bank)
+        # Extract known variables
+    wud_id = touchpoint_data.get('id', 'TBD')
+    api_name = touchpoint_data.get('name', 'Unnamed Integration')
+    source_system = touchpoint_data.get('source', '') or ''
+    business_purpose = touchpoint_data.get('business_purpose', '') or touchpoint_data.get('business_flow', '') or ''
+    td = touchpoint_data.get('techDetails', {}) or {}
+
+    def pf(val, placeholder):
+        """Pre-fill if value exists (gray/locked), else show placeholder (blue/editable)."""
+        v = str(val).strip() if val else ''
+        return (v, False) if v else (placeholder, True)
+
     schema = [
-        ("Touchpoint ID", str(wud_id), False),
-        ("EDS Name", api_name, False),
-        ("Function IDR Details", idr_details, False),
-        ("Base URL", "[Click to type Base URL...]", True),
-        ("Interface Type", "[Click to type: e.g., API, SFTP, DB]", True),
-        ("API Type", "[Click to type: e.g., REST, SOAP]", True),
-        ("Authentication Method", "[Click to type: e.g., OAuth 2.0, Basic, API Key]", True),
-        ("Input Request Payload (JSON)", "[Paste exact JSON Request payload here...]", True),
-        ("Output Response Payload (JSON)", "[Paste exact JSON Response payload here...]", True)
+        ("Touchpoint ID",               str(wud_id),                                          False),
+        ("API Name",                    td.get('apiName', '') or api_name,                    False),
+        ("Business Purpose",            td.get('businessPurpose', '') or business_purpose or "[To be provided]", not bool(td.get('businessPurpose', '') or business_purpose)),
+        ("Interface Type",              "API",                                                False),
+        ("API Type",                    *pf(td.get('apiType', ''),           "[REST / SOAP]")),
+        ("Endpoint URL / Method Name",  *pf(td.get('endpointUrl', ''),       "[/v1/resource/...]")),
+        ("API Method",                  *pf(td.get('apiMethod', ''),         "[GET / POST / PUT / DELETE]")),
+        ("UAT URL",                     *pf(td.get('uatUrl', ''),            "[https://uat.vendor.com/...]")),
+        ("Prod URL",                    *pf(td.get('prodUrl', ''),           "[https://api.vendor.com/...]")),
+        ("IP Whitelisting Required",    *pf(td.get('ipWhitelist', ''),      "[Yes / No — provide IPs]")),
+        ("VPN / SSL Required",          *pf(td.get('vpnRequired', ''),      "[Yes / No]")),
+        ("Authentication Type",         *pf(td.get('apiAuth', ''),           "[OAuth / Basic / API Key / JWT]")),
+        ("Token / Auth URL",            *pf(td.get('authDetails', ''),       "[https://auth.vendor.com/token]")),
+        ("Mandatory Headers",           *pf(td.get('mandatoryHeaders', ''), "[Authorization, Content-Type, ...]")),
+        ("Certificate / mTLS Notes",    *pf(td.get('certNotes', ''),        "[Client cert details if applicable]")),
+        ("Sample Request Payload",      *pf(td.get('apiReq', ''),           "[Paste JSON/XML request here...]")),
+        ("Sample Response Payload",     *pf(td.get('apiRes', ''),           "[Paste JSON/XML response here...]")),
+        ("Error Response Sample",       *pf(td.get('errorSample', ''),      "[Paste error response here...]")),
+        ("Timeout Value",               *pf(td.get('timeout', ''),          "[e.g., 30 seconds]")),
+        ("Rate Limit / TPS",            *pf(td.get('rateLimitTps', ''),     "[e.g., 100 TPS]")),
+        ("Retry Mechanism",             *pf(td.get('retryMechanism', ''),   "[e.g., 3x exponential backoff]")),
+        ("Correlation / Reference ID",  *pf(td.get('correlationId', ''),    "[Field name for tracking]")),
+        ("Callback / Webhook Required", *pf(td.get('callbackRequired', ''), "[Yes / No — URL if Yes]")),
+        ("Swagger / WSDL / Postman",    *pf(td.get('swaggerUrl', ''),       "[URL or attach with reply]")),
     ]
 
     rgt_table = doc.add_table(rows=1, cols=2)

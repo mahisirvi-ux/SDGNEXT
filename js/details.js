@@ -1,145 +1,208 @@
 let currentData = null;
 
+// ==========================================
+// TAB SWITCHING
+// ==========================================
+function switchTab(tabName) {
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
+    document.querySelectorAll('.tab-btn').forEach(t => {
+        t.classList.remove('pill-active');
+        t.classList.add('pill-inactive');
+    });
+    const panel = document.getElementById(`panel-${tabName}`);
+    if (panel) panel.classList.remove('hidden');
+    const tab = document.getElementById(`tab-${tabName}`);
+    if (tab) {
+        tab.classList.remove('pill-inactive');
+        tab.classList.add('pill-active');
+    }
+}
+
+// ==========================================
+// DATA LOADING
+// ==========================================
 document.addEventListener('DOMContentLoaded', async () => {
     const urlParams = new URLSearchParams(window.location.search);
     const id = urlParams.get('id');
-
-    if (!id) {
-        alert("No Touchpoint ID provided.");
-        window.location.href = "/";
-        return;
-    }
+    if (!id) { alert("No Touchpoint ID provided."); window.location.href = "/"; return; }
 
     try {
         const response = await fetch(`/api/phase2/touchpoint/${id}`);
         const result = await response.json();
-
         if (response.ok && result.status === "success") {
             currentData = result.data;
             populatePage(currentData);
         } else {
-            alert("Error loading data: " + result.message);
+            alert("Error: " + (result.message || "Unknown error"));
             window.location.href = "/";
         }
     } catch (err) {
         console.error(err);
-        alert("Network Error. Ensure your Python backend is running without errors.");
+        alert("Network Error. Ensure backend is running.");
     }
 });
 
+// ==========================================
+// POPULATE PAGE
+// ==========================================
 function populatePage(tp) {
     document.getElementById('fd-id').value = tp.id;
     document.getElementById('fd-integration-type').value = tp.integration || 'unassigned';
-    
-    // Header & Summary
+
+    // Header
     document.getElementById('fd-name').innerText = tp.name;
-    document.getElementById('fd-module').innerText = tp.module;
-    document.getElementById('fd-owner').innerText = tp.owner;
-    document.getElementById('fd-status-badge').innerText = tp.techStatus;
 
-    // --- 1. TOUCHPOINT DETAILS (Top Card Mapping) ---
-    document.getElementById('fd-val-name').innerText = tp.name;
-    document.getElementById('fd-val-module').innerText = tp.module;
-    document.getElementById('fd-val-int').innerText = tp.integration || 'TBD';
-    document.getElementById('fd-val-source').innerText = tp.source || '-';
-    document.getElementById('fd-val-target').innerText = tp.target || '-';
-    document.getElementById('fd-val-signoff').innerText = tp.signoff || 'Pending';
-    
-    document.getElementById('fd-val-mod-owner').innerText = tp.mod_owner || '-';
+    // Key Info Strip
+    document.getElementById('fd-strip-module').innerText = tp.module || '-';
+    document.getElementById('fd-strip-source').innerText = tp.source || '-';
+    document.getElementById('fd-strip-target').innerText = tp.target || '-';
+    document.getElementById('fd-strip-status').innerText = (tp.techDetails || {}).rgtStatus || 'Pending';
+
+    // Basic Info: Profile fields
+    document.getElementById('fd-val-flow').innerText = tp.business_flow || '-';
+    document.getElementById('fd-val-owner').innerText = tp.owner || '-';
     document.getElementById('fd-val-tech-owner').innerText = tp.tech_owner_name || '-';
+    document.getElementById('fd-val-mod-owner').innerText = tp.mod_owner || '-';
     document.getElementById('fd-val-fallback').innerText = tp.fallback || 'None';
-    
-    document.getElementById('fd-val-input').innerText = tp.input || 'Not specified';
-    document.getElementById('fd-val-output').innerText = tp.output || 'Not specified';
-    document.getElementById('fd-val-flow').innerText = tp.business_flow || 'No objective provided.';
 
-    // Tracking Dates + Times. Backend sends 'YYYY-MM-DD HH:MM'; split into two inputs.
+    // Left Panel: Schedule
     const rawStart = (tp.start && tp.start !== "-" && tp.start !== "None") ? tp.start : "";
-    const rawEnd   = (tp.end   && tp.end   !== "-" && tp.end   !== "None") ? tp.end   : "";
+    const rawEnd = (tp.end && tp.end !== "-" && tp.end !== "None") ? tp.end : "";
     const [sDate = "", sTime = ""] = rawStart.split(" ");
     const [eDate = "", eTime = ""] = rawEnd.split(" ");
-    document.getElementById('fd-start').value = sDate;
+        document.getElementById('fd-start').value = sDate;
     document.getElementById('fd-start-time').value = sTime;
     document.getElementById('fd-end').value = eDate;
     document.getElementById('fd-end-time').value = eTime;
 
-    // Technical JSON Data
     const td = tp.techDetails || {};
-    document.getElementById('fd-criticality').value = td.criticality || "Medium";
-    document.getElementById('fd-effort').value = td.effort || "";
-    
-    // Fill Workshop Notes & History
+    setVal('fd-criticality', td.criticality || "Medium");
+    setVal('fd-effort', td.effort || "");
+    setVal('fd-attendees', td.attendees || "");
+
+    // Workshop Planning Timeline
+    const wsStatus = td.workshopStage || determineWorkshopStage(tp);
+    updateWorkshopTimeline(wsStatus, tp);
+
+    // Tracking tab
     document.getElementById('fd-discussion').value = td.discussion || "";
     document.getElementById('fd-pointers').value = tp.history_log || "";
 
-    // API vs DB UI Toggle & Data mapping
+    // API fields (only set if element exists)
     const intType = (tp.integration || "").toLowerCase();
-    
-    if (intType === 'api') {
-        document.getElementById('fd-section-api').classList.remove('hidden');
-        document.getElementById('fd-api-name').value = td.apiName || "";
-        document.getElementById('fd-api-type').value = td.apiType || "REST";
-        document.getElementById('fd-api-auth').value = td.apiAuth || "OAuth 2.0";
-        document.getElementById('fd-api-url').value = td.apiUrl || "";
-        document.getElementById('fd-api-method-name').value = td.apiMethodName || "";
-        document.getElementById('fd-api-method').value = td.apiMethod || "GET";
-        document.getElementById('fd-api-req').value = td.apiReq || "";
-        document.getElementById('fd-api-res').value = td.apiRes || "";
-    } else if (intType === 'database') {
-        document.getElementById('fd-section-db').classList.remove('hidden');
-        document.getElementById('fd-db-engine').value = td.dbEngine || "Oracle";
-        document.getElementById('fd-db-target').value = td.dbTarget || "";
-        document.getElementById('fd-db-account').value = td.dbAccount || "";
-        document.getElementById('fd-db-firewall').value = td.dbFirewall || "";
+        if (intType === 'api') {
+        // Basic Info
+        setVal('fd-api-name', td.apiName || tp.name || "");
+        setVal('fd-api-type', td.apiType || "");
+
+        // Connectivity
+        setVal('fd-api-endpoint-url', td.endpointUrl || "");
+        setVal('fd-api-uat-url', td.uatUrl || "");
+        setVal('fd-api-prod-url', td.prodUrl || "");
+        setVal('fd-api-method', td.apiMethod || "");
+        setVal('fd-api-ip-whitelist', td.ipWhitelist || "");
+        setVal('fd-api-vpn', td.vpnRequired || "");
+
+        // Security
+        setVal('fd-api-auth', td.apiAuth || "");
+        setVal('fd-api-auth-details', td.authDetails || "");
+        setVal('fd-api-headers', td.mandatoryHeaders || "");
+        setVal('fd-api-cert-notes', td.certNotes || "");
+
+        // Payload
+        setVal('fd-api-req', td.apiReq || "");
+        setVal('fd-api-res', td.apiRes || "");
+
+        // Error Handling
+        setVal('fd-api-error', td.errorSample || "");
+        setVal('fd-api-timeout', td.timeout || "");
+        setVal('fd-api-tps', td.rateLimitTps || "");
+        setVal('fd-api-retry', td.retryMechanism || "");
+        setVal('fd-api-callback', td.callbackRequired || "");
+        setVal('fd-api-correlation', td.correlationId || "");
+
+        // Documentation
+        setVal('fd-api-swagger', td.swaggerUrl || "");
+        setVal('fd-api-doc-notes', td.docNotes || "");
     }
 }
 
+// Helper: safely set value on an element (won't crash if element removed)
+function setVal(id, value) {
+    const el = document.getElementById(id);
+    if (el) el.value = value;
+}
+// Helper: safely get value from an element
+function getVal(id) {
+    const el = document.getElementById(id);
+    return el ? el.value : "";
+}
+
+// ==========================================
+// EDIT MODE
+// ==========================================
 function toggleDetailsEditMode() {
     document.querySelectorAll('input, textarea, select').forEach(el => {
-        if(el.type !== 'hidden') el.disabled = false;
+        if (el.type !== 'hidden') el.disabled = false;
     });
-    
-    // Clear out the pointers box so the user can type a NEW appended note easily
     const pointersBox = document.getElementById('fd-pointers');
     pointersBox.dataset.oldLog = pointersBox.value;
     pointersBox.value = "";
-    pointersBox.placeholder = "Type a new update here to append it to the log...";
-
+    pointersBox.placeholder = "Type a new update to append to the log...";
     document.getElementById('fd-btn-edit').classList.add('hidden');
     document.getElementById('fd-btn-save').classList.remove('hidden');
 }
 
+// ==========================================
+// SAVE
+// ==========================================
 async function saveFullDetails() {
     const id = document.getElementById('fd-id').value;
     const intType = document.getElementById('fd-integration-type').value.toLowerCase();
     const saveBtn = document.getElementById('fd-btn-save');
-    
     saveBtn.innerText = "Saving...";
 
-    const techDetails = {
+        const techDetails = {
         discussion: document.getElementById('fd-discussion').value,
-        pointers: document.getElementById('fd-pointers').value, // This sends the NEW appended note to backend
-        criticality: document.getElementById('fd-criticality').value,
-        effort: document.getElementById('fd-effort').value
+        pointers: document.getElementById('fd-pointers').value,
+        criticality: getVal('fd-criticality'),
+        effort: getVal('fd-effort'),
+        attendees: getVal('fd-attendees')
     };
 
-    if (intType === 'api') {
-        techDetails.apiName = document.getElementById('fd-api-name').value;
-        techDetails.apiType = document.getElementById('fd-api-type').value;
-        techDetails.apiAuth = document.getElementById('fd-api-auth').value;
-        techDetails.apiUrl = document.getElementById('fd-api-url').value;
-        techDetails.apiMethodName = document.getElementById('fd-api-method-name').value;
-        techDetails.apiMethod = document.getElementById('fd-api-method').value;
-        techDetails.apiReq = document.getElementById('fd-api-req').value;
-        techDetails.apiRes = document.getElementById('fd-api-res').value;
-    } else if (intType === 'database') {
-        techDetails.dbEngine = document.getElementById('fd-db-engine').value;
-        techDetails.dbTarget = document.getElementById('fd-db-target').value;
-        techDetails.dbAccount = document.getElementById('fd-db-account').value;
-        techDetails.dbFirewall = document.getElementById('fd-db-firewall').value;
+        if (intType === 'api') {
+        // Basic Info
+        techDetails.apiName = getVal('fd-api-name');
+        techDetails.apiType = getVal('fd-api-type');
+        // Connectivity
+        techDetails.endpointUrl = getVal('fd-api-endpoint-url');
+        techDetails.uatUrl = getVal('fd-api-uat-url');
+        techDetails.prodUrl = getVal('fd-api-prod-url');
+        techDetails.apiMethod = getVal('fd-api-method');
+        techDetails.ipWhitelist = getVal('fd-api-ip-whitelist');
+        techDetails.vpnRequired = getVal('fd-api-vpn');
+        // Security
+        techDetails.apiAuth = getVal('fd-api-auth');
+        techDetails.authDetails = getVal('fd-api-auth-details');
+        techDetails.mandatoryHeaders = getVal('fd-api-headers');
+        techDetails.certNotes = getVal('fd-api-cert-notes');
+        // Payload
+        techDetails.apiReq = getVal('fd-api-req');
+        techDetails.apiRes = getVal('fd-api-res');
+        // Error Handling
+        techDetails.errorSample = getVal('fd-api-error');
+        techDetails.timeout = getVal('fd-api-timeout');
+        techDetails.rateLimitTps = getVal('fd-api-tps');
+        techDetails.retryMechanism = getVal('fd-api-retry');
+        techDetails.callbackRequired = getVal('fd-api-callback');
+        techDetails.correlationId = getVal('fd-api-correlation');
+        // Documentation
+        techDetails.swaggerUrl = getVal('fd-api-swagger');
+        techDetails.docNotes = getVal('fd-api-doc-notes');
+        // Timestamp
+        techDetails.lastUpdated = new Date().toISOString().split('T')[0];
     }
 
-    // Recombine date + time inputs into the backend's expected 'YYYY-MM-DD HH:MM' format
     const combineDT = (dateId, timeId) => {
         const d = (document.getElementById(dateId)?.value || "").trim();
         if (!d) return "";
@@ -152,16 +215,14 @@ async function saveFullDetails() {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                integration: currentData.integration, 
+                integration: currentData.integration,
                 start: combineDT('fd-start', 'fd-start-time'),
-                end:   combineDT('fd-end',   'fd-end-time'),
+                end: combineDT('fd-end', 'fd-end-time'),
                 status: currentData.techStatus,
                 technical_details: techDetails
             })
         });
-        
         if (response.ok) {
-            // Reload the page to fetch the newly formatted log!
             window.location.reload();
         } else {
             alert("Error saving details.");
@@ -173,57 +234,100 @@ async function saveFullDetails() {
         saveBtn.innerText = "Save Changes";
     }
 }
+
+// ==========================================
+// GENERATE RGT DOCUMENT
+// ==========================================
 async function generateWUD() {
     const id = document.getElementById('fd-id').value;
     const btn = document.getElementById('fd-btn-generate');
-    const originalText = btn.innerText;
-    
-    // UI Feedback
-    btn.innerText = "Generating AI PDF...";
+    const originalHTML = btn.innerHTML;
+    btn.innerHTML = "Generating...";
     btn.disabled = true;
-    btn.classList.add('opacity-75', 'cursor-wait');
+    btn.classList.add('opacity-75');
 
     try {
-        // Fetch the PDF binary stream
         const response = await fetch(`/api/phase2/touchpoint/${id}/generate-wud`);
-        
         if (!response.ok) {
-            // Handle if it's a JSON error (like "Only API supported")
-            const errorData = await response.json();
-            alert(errorData.message || "Failed to generate WUD.");
+            const e = await response.json();
+            alert(e.detail || e.message || "Failed to generate RGT.");
             return;
         }
-
-        // Convert the response to a Blob (Binary Large Object)
         const blob = await response.blob();
-        
-        // Create a temporary hidden link to force the browser to download the file
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        
-        // Extract filename from headers if possible, otherwise use a default
-        const contentDisposition = response.headers.get('Content-Disposition');
-        let filename = `WUD_Document_${id}.docx`;  // <-- Changed default fallback to .docx
-        if (contentDisposition && contentDisposition.indexOf('filename=') !== -1) {
-            filename = contentDisposition.split('filename=')[1].replace(/"/g, '');
-        }
-        
-        a.download = filename;
+        const cd = response.headers.get('Content-Disposition');
+        a.download = (cd && cd.includes('filename=')) ? cd.split('filename=')[1].replace(/"/g, '') : `RGT_${id}.docx`;
         document.body.appendChild(a);
         a.click();
-        
-        // Clean up
         window.URL.revokeObjectURL(url);
         a.remove();
-
     } catch (err) {
         console.error(err);
-        alert("Network error occurred while generating PDF.");
+        alert("Network error generating document.");
     } finally {
-        // Restore button state
-        btn.innerText = originalText;
+        btn.innerHTML = originalHTML;
         btn.disabled = false;
-        btn.classList.remove('opacity-75', 'cursor-wait');
+        btn.classList.remove('opacity-75');
+    }
+}
+// ==========================================
+// WORKSHOP TIMELINE
+// ==========================================
+function determineWorkshopStage(tp) {
+    // Auto-determine stage based on available data
+    const techStatus = (tp.techStatus || "").toLowerCase();
+    const hasSchedule = tp.start && tp.start !== "-" && tp.start !== "None";
+    const td = tp.techDetails || {};
+
+    if (techStatus === 'completed' || techStatus === 'signed-off') return 3;
+    if (hasSchedule || techStatus === 'in progress' || td.apiUrl || td.apiReq) return 2;
+    if (tp.owner || tp.source) return 1;
+    return 0;
+}
+
+function updateWorkshopTimeline(stage, tp) {
+    const dot1 = document.getElementById('ws-dot-1');
+    const dot2 = document.getElementById('ws-dot-2');
+    const dot3 = document.getElementById('ws-dot-3');
+    const info1 = document.getElementById('ws-step1-info');
+    const info2 = document.getElementById('ws-step2-info');
+    const info3 = document.getElementById('ws-step3-info');
+
+    const td = tp.techDetails || {};
+    const signoff = tp.signoff || '';
+    const startDate = (tp.start && tp.start !== "-" && tp.start !== "None") ? tp.start.split(" ")[0] : '';
+
+    // Step 1: Scoping
+    if (stage >= 1) {
+        dot1.className = 'w-3 h-3 rounded-full bg-emerald-500 flex-shrink-0 mt-0.5';
+        info1.innerText = 'Done' + (tp.owner ? ' · ' + tp.owner : '');
+    } else {
+        dot1.className = 'w-3 h-3 rounded-full bg-slate-300 flex-shrink-0 mt-0.5';
+        info1.innerText = 'Not started';
+    }
+
+    // Step 2: Technical Workshop
+    if (stage >= 2) {
+        if (stage > 2) {
+            dot2.className = 'w-3 h-3 rounded-full bg-emerald-500 flex-shrink-0 mt-0.5';
+            info2.innerText = 'Done' + (startDate ? ' · ' + startDate : '');
+        } else {
+            dot2.className = 'w-3 h-3 rounded-full bg-indigo-500 flex-shrink-0 mt-0.5';
+            info2.innerText = (startDate ? 'Scheduled · ' + startDate : 'Pending · Schedule with vendor');
+        }
+    } else {
+        dot2.className = 'w-3 h-3 rounded-full bg-slate-300 flex-shrink-0 mt-0.5';
+        info2.innerText = 'Not started';
+    }
+
+    // Step 3: Blueprint & Signoff
+    if (stage >= 3) {
+        dot3.className = 'w-3 h-3 rounded-full bg-emerald-500 flex-shrink-0 mt-0.5';
+        info3.innerText = 'Done' + (signoff ? ' · ' + signoff : '');
+    } else {
+        dot3.className = 'w-3 h-3 rounded-full bg-slate-300 flex-shrink-0 mt-0.5';
+        info3.innerText = 'Not started';
     }
 }

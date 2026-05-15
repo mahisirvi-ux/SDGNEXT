@@ -136,15 +136,9 @@ def get_phase2_dashboard(request: Request):
         for tp, func, tech in results:
 
             tech_owner = getattr(func, "owner", "Unassigned") or "Unassigned"
-            # Try identity-master enrichment first (yields "Rahul (CBS)" when matched).
-            # If unmatched, fall back to the legacy business_department concatenation
-            # so demo data without identity rows still looks reasonable.
-            enriched = enrich_owner_label(db, tech_owner, _cache=owner_cache)
-            if enriched and "(" in enriched:
-                display_owner = enriched
-            else:
-                dept = getattr(func, "business_department", "") or ""
-                display_owner = f"{tech_owner} ({dept})" if dept else tech_owner
+                        # Try identity-master enrichment first (yields "Rahul (CBS)" when matched).
+            enriched = enrich_owner_label(db, tech_owner, project_id=project.id, _cache=owner_cache)
+            display_owner = enriched if enriched else tech_owner
 
             integration_type = tech.integration_type if tech and tech.integration_type else "unassigned"
             

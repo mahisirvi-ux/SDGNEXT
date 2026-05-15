@@ -2,50 +2,68 @@ import re
 from io import BytesIO
 from docx import Document
 
+
 def extract_bank_specifications(docx_bytes: bytes) -> dict:
     """
     Parses the returned RGT Word document and extracts technical details.
-    Includes smart-cleaning to remove placeholder instructions.
+    Maps the RGT table labels to the techDetails JSON keys used by details.js.
     """
     doc = Document(BytesIO(docx_bytes))
     extracted_data = {}
-    
+
     if not doc.tables:
         raise ValueError("Returned document is missing the requirement table.")
-        
+
     rgt_table = doc.tables[0]
-    
+
+    # Maps RGT label → techDetails JSON key(s)
+    # Must match EXACTLY the labels in rgt_engine.py schema
     field_map = {
-        "Base URL": ["url", "base_url", "baseUrl", "apiUrl", "api_url"],
-        "API Type": ["apiType", "api_type"],
-        "Authentication Method": ["apiAuth", "auth", "auth_method"],
-        "Input Request Payload (JSON)": ["apiReq", "request_payload"],
-        "Output Response Payload (JSON)": ["apiRes", "response_payload"]
+        "API Name":                     ["apiName"],
+        "Business Purpose":             ["businessPurpose"],
+        "API Type":                     ["apiType"],
+        "Endpoint URL / Method Name":   ["endpointUrl"],
+        "API Method":                   ["apiMethod"],
+        "UAT URL":                      ["uatUrl"],
+        "Prod URL":                     ["prodUrl"],
+        "IP Whitelisting Required":     ["ipWhitelist"],
+        "VPN / SSL Required":           ["vpnRequired"],
+        "Authentication Type":          ["apiAuth"],
+        "Token / Auth URL":             ["authDetails"],
+        "Mandatory Headers":            ["mandatoryHeaders"],
+        "Certificate / mTLS Notes":     ["certNotes"],
+        "Sample Request Payload":       ["apiReq"],
+        "Sample Response Payload":      ["apiRes"],
+        "Error Response Sample":        ["errorSample"],
+        "Timeout Value":                ["timeout"],
+        "Rate Limit / TPS":             ["rateLimitTps"],
+        "Retry Mechanism":              ["retryMechanism"],
+        "Correlation / Reference ID":   ["correlationId"],
+        "Callback / Webhook Required":  ["callbackRequired"],
+        "Swagger / WSDL / Postman":     ["swaggerUrl"],
     }
 
     for row in rgt_table.rows:
         if len(row.cells) < 2:
             continue
-            
+
         label = row.cells[0].text.strip()
         raw_value = row.cells[1].text.strip()
-        
+
         if label in field_map:
-            # ---> BULLETPROOF CLEANUP <---
-            # This uses Regex to find anything inside [brackets] and deletes it.
-            # E.g., "https://api.com [Click to type]" becomes just "https://api.com"
+            # Remove placeholder text inside [brackets]
             clean_value = re.sub(r'\[.*?\]', '', raw_value).strip()
-            
-            if clean_value: # If there is still text left after stripping brackets
+
+            if clean_value:
                 for db_key in field_map[label]:
                     extracted_data[db_key] = clean_value
-                    
-    # DEBUG PRINT
-    print("\n" + "="*50)
-    print("🧠 SMART PARSER EXTRACTED:")
+
+    # Debug log
+    print("\n" + "=" * 50)
+    print("PARSER EXTRACTED:")
     for key, val in extracted_data.items():
-        # Truncate long JSON strings for cleaner terminal logs
-        print(f"   - {key}: {val[:50]}..." if len(val) > 50 else f"   - {key}: {val}")
-    print("="*50 + "\n")
+        display = f"{val[:60]}..." if len(val) > 60 else val
+        print(f"   - {key}: {display}")
+    print("=" * 50 + "\n")
 
     return extracted_data

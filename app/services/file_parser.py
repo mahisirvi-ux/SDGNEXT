@@ -19,9 +19,8 @@ PART1_MAPPING = {
     'Business Fallback': 'business_fallback',
     'IDR Remarks / Notes': 'idr_remarks',
     'IDR Status': 'idr_status',
-    'Inputs': 'inputs',
+        'Inputs': 'inputs',
     'Expected Output': 'expected_output',
-    'Business Department': 'business_department',
     'Owner': 'owner',
     'IDR SignOff Date': 'idr_signoff_date',
     'Pending With': 'pending_with',
@@ -57,7 +56,7 @@ def process_idr_upload(project_name: str, file_content: bytes, db: Session):
 
     df = pd.read_csv(io.BytesIO(file_content))
 
-    # Wipe existing touchpoints (existing behavior on re-upload)
+        # Wipe existing touchpoints (existing behavior on re-upload)
     db.query(IntegrationTouchpoint).filter(IntegrationTouchpoint.project_id == project.id).delete()
     db.commit()
 
@@ -82,9 +81,9 @@ def process_idr_upload(project_name: str, file_content: bytes, db: Session):
             val = row[csv_header]
             raw = str(val).strip() if pd.notna(val) else None
 
-            # Validate columns that hold people-names
+            # Validate columns that hold people-names (project-scoped)
             if db_column in NAME_COLUMNS and raw:
-                resolved, warn = resolve_team_member(db, raw, _cache=name_cache)
+                resolved, warn = resolve_team_member(db, raw, project_id=project.id, _cache=name_cache)
                 func_data[db_column] = resolved  # falls back to raw on miss
                 if warn:
                     warnings_seen.add(warn)

@@ -16,6 +16,11 @@ DESIGN NOTES
 * Matching is case-insensitive on full_name. We trim whitespace.
 
 * If a caller passes an empty/None value we return (None, None) — empty is valid.
+
+* PROJECT SCOPING: All resolution functions accept an optional `project_id`
+  parameter. When provided, only team members whose department belongs to
+  that project are considered. This ensures BOM and IBL have isolated identity
+  pools.
 """
 from typing import Optional, Tuple, List, Dict
 from sqlalchemy.orm import Session
@@ -29,36 +34,45 @@ def _normalize(name: Optional[str]) -> str:
 
 
 def resolve_team_member(db: Session, name: Optional[str],
+                        project_id: Optional[int] = None,
                         _cache: Optional[Dict[str, Optional[TeamMaster]]] = None
                         ) -> Tuple[Optional[str], Optional[str]]:
     """
-    Look up a free-text name against team_master.
+    Look up a free-text name against team_master, scoped to a project.
 
     Returns: (canonical_name_or_original, warning_message_or_None)
       - If name is None or empty -> (None, None)
       - If the name matches exactly (case-insensitive) -> (matched.full_name, None)
       - If no match -> (original_name, "Unknown team member: 'foo'")
 
-    We always return the original input on a miss so the legacy free-text
-    column still gets populated. The warning is collected by the caller.
+    If project_id is provided, only matches members whose department
+    belongs to that project. Otherwise searches globally (backward compat).
     """
     raw = _normalize(name)
     if not raw:
         return (None, None)
 
-    if _cache is not None and raw.lower() in _cache:
-        cached = _cache[raw.lower()]
+    cache_key = f"{raw.lower()}:{project_id or 'global'}"
+    if _cache is not None and cache_key in _cache:
+        cached = _cache[cache_key]
         if cached is not None:
             return (cached.full_name, None)
         return (raw, f"Unknown team member: '{raw}'")
 
-    member = db.query(TeamMaster).filter(
+    query = db.query(TeamMaster).filter(
         TeamMaster.is_active == True,
         TeamMaster.full_name.ilike(raw)
-    ).first()
+    )
+    # Scope to project via department
+    if project_id is not None:
+        query = query.join(
+            DepartmentMaster, TeamMaster.dept_id == DepartmentMaster.dept_id
+        ).filter(DepartmentMaster.project_id == project_id)
+
+    member = query.first()
 
     if _cache is not None:
-        _cache[raw.lower()] = member
+        _cache[cache_key] = member
 
     if member:
         return (member.full_name, None)
@@ -66,16 +80,18 @@ def resolve_team_member(db: Session, name: Optional[str],
 
 
 def resolve_pending_with(db: Session, name: Optional[str],
+                         project_id: Optional[int] = None,
                          _cache: Optional[Dict[str, Optional[TeamMaster]]] = None
                          ) -> Tuple[Optional[str], Optional[str]]:
     """Same as resolve_team_member, but conventionally used at the 'Pending With'
     write sites. Kept as a separate function so we can add stricter rules here
     later (e.g. must be active, must not be CRM-side) without touching callers.
     """
-    return resolve_team_member(db, name, _cache)
+    return resolve_team_member(db, name, project_id=project_id, _cache=_cache)
 
 
 def enrich_owner_label(db: Session, name: Optional[str],
+                       project_id: Optional[int] = None,
                        _cache: Optional[Dict[str, Optional[TeamMaster]]] = None
                        ) -> str:
     """For read endpoints. Given a free-text owner name, return either:
@@ -83,20 +99,26 @@ def enrich_owner_label(db: Session, name: Optional[str],
       - 'Rahul'        if matched but no dept lookup (defensive)
       - 'Rahul'        if no match (legacy/unmapped) — unchanged
       - '-'            if name is empty
+    When project_id is provided, only matches within that project's departments.
     Never raises. This is the read-side display helper.
     """
     raw = _normalize(name)
     if not raw:
         return "-"
 
-    cache_key = raw.lower()
+    cache_key = f"{raw.lower()}:{project_id or 'global'}"
     if _cache is not None and cache_key in _cache:
         member = _cache[cache_key]
     else:
-        member = db.query(TeamMaster).filter(
+        query = db.query(TeamMaster).filter(
             TeamMaster.is_active == True,
             TeamMaster.full_name.ilike(raw)
-        ).first()
+        )
+        if project_id is not None:
+            query = query.join(
+                DepartmentMaster, TeamMaster.dept_id == DepartmentMaster.dept_id
+            ).filter(DepartmentMaster.project_id == project_id)
+        member = query.first()
         if _cache is not None:
             _cache[cache_key] = member
 
@@ -110,16 +132,22 @@ def enrich_owner_label(db: Session, name: Optional[str],
     return raw
 
 
-def list_active_members_with_dept(db: Session) -> List[Dict]:
+def list_active_members_with_dept(db: Session, project_id: Optional[int] = None) -> List[Dict]:
     """Used by the Pending-With dropdown. Returns rich records so the UI can
     show 'Rahul (CBS)' format. Sorted by name for stable UX.
+    When project_id is provided, only returns members from that project's departments.
     """
-    rows = db.query(TeamMaster, DepartmentMaster).join(
+    query = db.query(TeamMaster, DepartmentMaster).join(
         DepartmentMaster, TeamMaster.dept_id == DepartmentMaster.dept_id
     ).filter(
         TeamMaster.is_active == True,
         DepartmentMaster.is_active == True
-    ).order_by(TeamMaster.full_name.asc()).all()
+    )
+    # Scope to project
+    if project_id is not None:
+        query = query.filter(DepartmentMaster.project_id == project_id)
+
+    rows = query.order_by(TeamMaster.full_name.asc()).all()
 
     return [
         {
@@ -138,24 +166,30 @@ def list_active_members_with_dept(db: Session) -> List[Dict]:
     ]
 
 
-def resolve_member_email_and_cc(db: Session, name: Optional[str]
+def resolve_member_email_and_cc(db: Session, name: Optional[str],
+                                project_id: Optional[int] = None
                                 ) -> Tuple[Optional[str], Optional[str], Optional[str]]:
     """For email send paths. Returns (to_email, cc_email, display_name)
     where to_email is the person's direct mail, cc_email is the department
     distribution list, and display_name is the canonical name for greetings.
 
+    When project_id is provided, only resolves within that project's departments.
     Falls back gracefully if the name isn't matched (returns (None, None, name)).
     """
     raw = _normalize(name)
     if not raw:
         return (None, None, None)
 
-    row = db.query(TeamMaster, DepartmentMaster).join(
+    query = db.query(TeamMaster, DepartmentMaster).join(
         DepartmentMaster, TeamMaster.dept_id == DepartmentMaster.dept_id
     ).filter(
         TeamMaster.full_name.ilike(raw),
         TeamMaster.is_active == True
-    ).first()
+    )
+    if project_id is not None:
+        query = query.filter(DepartmentMaster.project_id == project_id)
+
+    row = query.first()
 
     if not row:
         return (None, None, raw)

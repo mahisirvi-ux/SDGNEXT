@@ -26,7 +26,7 @@ def sync_bank_replies():
         mail.select('inbox')
 
         # 2. Search for UNREAD emails that contain our Tracking ID format
-        status, messages = mail.search(None, '(UNSEEN SUBJECT "WUD-ID")')
+        status, messages = mail.search(None, '(UNSEEN SUBJECT "Re:" SUBJECT "WUD-ID")')
         
         if status != 'OK' or not messages[0]:
             return {"message": "No new replies detected.", "processed": [], "errors": []}

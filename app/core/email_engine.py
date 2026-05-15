@@ -97,27 +97,28 @@ def generate_and_send_follow_ups():
       department_master. The person is in To, their dept group in CC.
     - If a name can't be resolved (unmapped legacy data), we fall back to the
       configured RECIPIENTS list so the email isn't lost during the migration
-      window.
+            window.
     """
     db = SessionLocal()
     try:
-        # 1. Build a name -> (person_email, dept_email, dept_name) lookup.
-        # Joining once is cheaper than N lookups inside the loop.
+        # 1. Build a (name_lower, project_id) -> identity lookup.
+        # This ensures follow-ups resolve identity within the correct project context.
         from app.models.domain import DepartmentMaster
         identity_rows = db.query(TeamMaster, DepartmentMaster).join(
             DepartmentMaster, TeamMaster.dept_id == DepartmentMaster.dept_id
         ).filter(TeamMaster.is_active == True).all()
 
-        # case-insensitive lookup on name
-        person_lookup = {
-            m.full_name.strip().lower(): {
+        # Keyed by (name_lower, project_id) for project-scoped resolution
+        person_lookup = {}
+        for m, d in identity_rows:
+            key = (m.full_name.strip().lower(), d.project_id)
+            person_lookup[key] = {
                 "person_email": m.email,
                 "dept_email": d.department_email,
                 "dept_name": d.department_name,
                 "display_name": m.full_name,
+                "project_id": d.project_id,
             }
-            for m, d in identity_rows
-        }
 
         # 2. Fetch items that are Pending and assigned
         stuck_items = db.query(IDRFunctional, IntegrationTouchpoint).join(
@@ -132,15 +133,17 @@ def generate_and_send_follow_ups():
             print(f"[{datetime.now()}] No pending items found. Skipping follow-ups.")
             return
 
-        # 3. Group items by the person they're pending with (case-insensitive)
+        # 3. Group items by the person they're pending with + project context
         grouped_tasks = {}
         for func, tp in stuck_items:
             person = (func.pending_with or "").strip()
             if not person:
                 continue
-            key = person.lower()
+            # Use (name, project_id) as key for project-scoped grouping
+            project_id = tp.project_id
+            key = (person.lower(), project_id)
             if key not in grouped_tasks:
-                grouped_tasks[key] = {"display": person, "items": []}
+                grouped_tasks[key] = {"display": person, "project_id": project_id, "items": []}
 
             # Fetch ONLY the open pointers from history
             history_entries = db.query(IDRActionLog).filter(
@@ -180,8 +183,10 @@ def generate_and_send_follow_ups():
         for person_key, group in grouped_tasks.items():
             person_display = group["display"]
             items = group["items"]
+            project_id = group["project_id"]
 
-            # Resolve to (To, Cc) emails. Unmapped names -> fallback to RECIPIENTS.
+            # Resolve to (To, Cc) emails using project-scoped lookup.
+            # person_key is now (name_lower, project_id) tuple.
             identity = person_lookup.get(person_key)
             if identity:
                 to_email = identity["person_email"]
@@ -192,7 +197,7 @@ def generate_and_send_follow_ups():
                 # Fallback: an unmapped legacy name. Don't drop the email — send to
                 # the global RECIPIENTS list so somebody sees it.
                 print(f"[{datetime.now()}] WARNING: pending_with name '{person_display}' "
-                      f"not found in team_master. Falling back to global RECIPIENTS.")
+                      f"not found in team_master for project_id={project_id}. Falling back to global RECIPIENTS.")
                 to_email = RECIPIENTS[0] if RECIPIENTS else SMTP_USERNAME
                 cc_email = None
                 dept_name = "Unassigned"
