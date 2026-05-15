@@ -92,6 +92,12 @@ function populatePage(tp) {
         document.getElementById('fd-db-account').value = td.dbAccount || "";
         document.getElementById('fd-db-firewall').value = td.dbFirewall || "";
     }
+    window.checkAndEnableMockButton(
+        tp.integration,               // The integration type ('API', 'Database', etc)
+        td.apiName || tp.name,        // The API Name (fallback to touchpoint name)
+        td.apiMethod || 'POST',       // The HTTP Method
+        td.apiRes || '{\n  "status": "success"\n}' // The Sample Response
+    );
 }
 
 function toggleDetailsEditMode() {
@@ -227,3 +233,236 @@ async function generateWUD() {
         btn.classList.remove('opacity-75', 'cursor-wait');
     }
 }
+  window.toggleMockModal = function(show) {
+            const modal = document.getElementById('mockServiceModal');
+            const content = document.getElementById('mockModalContent');
+            const resultArea = document.getElementById('mockResultArea');
+            
+            if (show) {
+                // 1. Reset the form to blank immediately
+                document.getElementById('mockServiceForm').reset();
+                resultArea.classList.add('hidden');
+                document.getElementById('mockSubmitBtn').disabled = false;
+                document.getElementById('mockSubmitBtn').innerText = 'Deploy Service';
+                
+                // 2. Default back to the "Create" tab
+                switchMockTab('create');
+                
+                modal.classList.remove('hidden');
+                setTimeout(() => {
+                    modal.classList.remove('opacity-0');
+                    content.classList.remove('scale-95');
+                    content.classList.add('scale-100');
+                }, 10);
+            } else {
+                modal.classList.add('opacity-0');
+                content.classList.remove('scale-100');
+                content.classList.add('scale-95');
+                setTimeout(() => {
+                    modal.classList.add('hidden');
+                }, 300);
+            }
+        };
+
+        // Tab Switching Logic
+        window.switchMockTab = function(tab) {
+            const createTab = document.getElementById('mockCreateTab');
+            const viewTab = document.getElementById('mockViewTab');
+            const btnCreate = document.getElementById('tab-create');
+            const btnView = document.getElementById('tab-view');
+            
+            if (tab === 'create') {
+                createTab.classList.remove('hidden');
+                viewTab.classList.add('hidden');
+                btnCreate.className = 'pb-3 border-b-2 border-indigo-600 font-semibold text-indigo-600 transition-colors';
+                btnView.className = 'pb-3 border-b-2 border-transparent font-medium text-slate-500 hover:text-slate-800 transition-colors';
+            } else {
+                createTab.classList.add('hidden');
+                viewTab.classList.remove('hidden');
+                btnView.className = 'pb-3 border-b-2 border-indigo-600 font-semibold text-indigo-600 transition-colors';
+                btnCreate.className = 'pb-3 border-b-2 border-transparent font-medium text-slate-500 hover:text-slate-800 transition-colors';
+                
+                // Load existing mocks when viewing the tab
+                document.getElementById('mockSearchInput').value = ''; 
+                loadDeployedMocks(''); 
+            }
+        };
+
+        // Fetch and Render Mocks
+        window.loadDeployedMocks = async function(query) {
+            const container = document.getElementById('mockListContainer');
+            container.innerHTML = '<div class="text-center text-slate-500 py-6">Loading mocks...</div>';
+            
+            try {
+                const res = await fetch(`/api/mocks/list?query=${encodeURIComponent(query)}`);
+                const mocks = await res.json();
+                
+                if (mocks.length === 0) {
+                    container.innerHTML = '<div class="text-center text-slate-500 py-6">No mocks found.</div>';
+                    return;
+                }
+                
+                let html = '';
+                mocks.forEach(m => {
+                    html += `
+                    <div class="border border-slate-200 rounded-lg p-3 bg-white shadow-sm flex justify-between items-center hover:border-indigo-300 transition-colors">
+                        <div>
+                            <div class="flex items-center gap-2 mb-1">
+                                <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">${m.http_method}</span>
+                                <span class="font-mono text-sm text-indigo-700 font-semibold">/${m.method_name}</span>
+                            </div>
+                            <p class="text-xs text-slate-500">Status: <span class="font-semibold text-slate-700">${m.status_code}</span> | ${m.content_type}</p>
+                        </div>
+                        <button type="button" onclick="copyGenericUrl('${window.location.origin}/mock-api/${m.method_name}', this)" class="text-slate-400 hover:text-indigo-600 bg-slate-50 hover:bg-indigo-50 p-2 rounded border border-slate-200 transition-colors" title="Copy URL">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                        </button>
+                    </div>
+                    `;
+                });
+                container.innerHTML = html;
+            } catch(e) {
+                container.innerHTML = '<div class="text-center text-red-500 py-6">Error loading mocks.</div>';
+            }
+        };
+
+        window.submitMockService = async function(event) {
+            event.preventDefault(); 
+            const submitBtn = document.getElementById('mockSubmitBtn');
+            submitBtn.disabled = true;
+            submitBtn.innerText = 'Deploying...';
+
+            const payloadData = {
+                method_name: document.getElementById('mockPath').value,
+                http_method: document.getElementById('mockHttpMethod').value,
+                status_code: parseInt(document.getElementById('mockStatus').value),
+                content_type: document.getElementById('mockContentType').value,
+                payload: document.getElementById('mockPayload').value,
+                created_by: "System User"
+            };
+
+            try {
+                const response = await fetch('/api/mocks/create', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payloadData)
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    const fullUrl = window.location.origin + result.mock_url;
+                    document.getElementById('mockFinalUrl').innerText = fullUrl;
+                    document.getElementById('mockResultArea').classList.remove('hidden');
+                    submitBtn.innerText = 'Deployed!';
+                } else {
+                    // 🚨 SHOWS THE ERROR ALERT TO THE USER IF IT ALREADY EXISTS
+                    alert(result.detail || 'Failed to deploy mock.');
+                    submitBtn.disabled = false;
+                    submitBtn.innerText = 'Deploy Service';
+                }
+            } catch (error) {
+                console.error('Error deploying mock:', error);
+                alert('Network error while deploying mock.');
+                submitBtn.disabled = false;
+                submitBtn.innerText = 'Deploy Service';
+            }
+        };
+
+        // Copies URL from the success box
+        window.copyMockUrl = function() {
+            const urlText = document.getElementById('mockFinalUrl').innerText;
+            navigator.clipboard.writeText(urlText).then(() => {
+                const btn = event.target;
+                const originalText = btn.innerText;
+                btn.innerText = 'Copied!';
+                btn.classList.replace('bg-emerald-600', 'bg-emerald-800');
+                setTimeout(() => {
+                    btn.innerText = originalText;
+                    btn.classList.replace('bg-emerald-800', 'bg-emerald-600');
+                }, 2000);
+            });
+        };
+
+        // Copies URL directly from the list view
+        window.copyGenericUrl = function(urlText, btnElement) {
+            navigator.clipboard.writeText(urlText).then(() => {
+                const originalHTML = btnElement.innerHTML;
+                btnElement.innerHTML = '<svg class="w-5 h-5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>';
+                setTimeout(() => {
+                    btnElement.innerHTML = originalHTML;
+                }, 1500);
+            });
+        };
+  // 1. THE CHECKER: Call this function whenever your Phase 2 Detail page opens!
+window.checkAndEnableMockButton = function(integrationType, apiName, httpMethod, sampleResponse) {
+    const mockBtn = document.getElementById('detailDeployMockBtn');
+    if (!mockBtn) return;
+
+    // Make it case-insensitive and check if it's 'api'
+    const isApi = integrationType && integrationType.toString().trim().toLowerCase() === 'api';
+
+    if (isApi) {
+        // ✅ Enable the button and make it beautiful
+        mockBtn.disabled = false;
+        mockBtn.className = "flex items-center gap-2 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white font-semibold py-2 px-4 rounded-lg shadow-md hover:shadow-lg transition-all transform hover:-translate-y-0.5";
+        mockBtn.title = "Deploy this integration as a Mock API";
+        
+        // Store the details inside the button's dataset for later
+        mockBtn.dataset.apiname = apiName || '';
+        mockBtn.dataset.method = httpMethod || 'POST';
+        mockBtn.dataset.response = sampleResponse || '{\n  "status": "success"\n}';
+        
+    } else {
+        // ❌ Disable the button for File/DB/SFTP types
+        mockBtn.disabled = true;
+        mockBtn.className = "flex items-center gap-2 bg-slate-400 text-white font-semibold py-2 px-4 rounded-lg shadow-sm opacity-50 cursor-not-allowed transition-all";
+        mockBtn.title = `Mocks cannot be deployed for type: ${integrationType || 'Unknown'}. Only APIs are supported.`;
+    }
+};
+
+// 2. THE EXECUTOR: This runs when the user clicks the active button
+window.openPrepopulatedMockModal = function() {
+    const mockBtn = document.getElementById('detailDeployMockBtn');
+    if (mockBtn.disabled) return;
+
+    // Grab the stored data from the button
+    const rawApiName = mockBtn.dataset.apiname || 'new-endpoint';
+    const rawMethod = mockBtn.dataset.method.toUpperCase();
+    const rawResponse = mockBtn.dataset.response;
+
+    // 1. Format the endpoint path (e.g. "Create Lead" -> "create-lead")
+    const cleanPath = rawApiName.replace(/\s+/g, '-').toLowerCase();
+
+    // 2. Open the modal (using your existing function)
+    window.toggleMockModal(true);
+
+    // 3. Pre-fill the Endpoint Path
+    document.getElementById('mockPath').value = cleanPath;
+    
+    // 4. Pre-fill the HTTP Method (Fallback to POST if missing)
+    const methodDropdown = document.getElementById('mockHttpMethod');
+    if([...methodDropdown.options].some(opt => opt.value === rawMethod)) {
+        methodDropdown.value = rawMethod;
+    } else {
+        methodDropdown.value = "POST"; 
+    }
+
+    // 5. Pre-fill the Response Payload & Auto-Detect Type
+    const payloadBox = document.getElementById('mockPayload');
+    const typeDropdown = document.getElementById('mockContentType');
+    
+    try {
+        // If it's valid JSON, format it with nice indents!
+        const parsedJson = JSON.parse(rawResponse);
+        payloadBox.value = JSON.stringify(parsedJson, null, 2);
+        typeDropdown.value = "application/json";
+    } catch (e) {
+        // If it fails to parse as JSON, check if it looks like XML
+        payloadBox.value = rawResponse;
+        if (rawResponse.trim().startsWith('<')) {
+            typeDropdown.value = "application/xml";
+        } else {
+            typeDropdown.value = "text/plain";
+        }
+    }
+};

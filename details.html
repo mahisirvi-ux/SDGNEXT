@@ -26,6 +26,9 @@
                 <button id="fd-btn-generate" onclick="generateWUD()" class="bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 text-sm font-bold py-2 px-4 rounded shadow-sm transition-all" >
                     Generate Work Unit
                 </button>
+                <button id="detailDeployMockBtn" onclick="openPrepopulatedMockModal()" disabled class="flex items-center gap-2 bg-slate-400 text-white font-semibold py-2 px-4 rounded-lg shadow-sm opacity-50 cursor-not-allowed transition-all" title="Checking integration type...">
+                    <span class="text-lg">🚀</span> Deploy Mock Service
+                </button>
                 <button id="fd-btn-edit" onclick="toggleDetailsEditMode()" class="bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 text-sm font-bold py-2 px-6 rounded shadow-sm transition-all">
                     Edit Details
                 </button>
@@ -158,6 +161,239 @@
         </div>
     </div>
 
-    <script src="/js/details.js?v=8"></script>
+    <div id="mockServiceModal" class="fixed inset-0 z-50 hidden opacity-0 transition-opacity duration-300">
+        <div class="fixed inset-0 bg-gray-900 bg-opacity-60 backdrop-blur-sm" onclick="toggleMockModal(false)"></div>
+        
+        <div class="fixed inset-0 flex items-center justify-center p-4 pointer-events-none">
+            <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden pointer-events-auto transform transition-all scale-95" id="mockModalContent">
+                
+                <div class="bg-slate-50 border-b border-slate-200 px-6 pt-4">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-xl font-bold text-slate-800 flex items-center gap-2">
+                            <span class="text-indigo-600">🚀</span> Mock API Engine
+                        </h3>
+                        <button onclick="toggleMockModal(false)" class="text-slate-400 hover:text-slate-600 transition-colors">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                        </button>
+                    </div>
+                    <div class="flex space-x-6">
+                        <button onclick="switchMockTab('create')" id="tab-create" class="pb-3 border-b-2 border-indigo-600 font-semibold text-indigo-600 transition-colors">Create New</button>
+                        <button onclick="switchMockTab('view')" id="tab-view" class="pb-3 border-b-2 border-transparent font-medium text-slate-500 hover:text-slate-800 transition-colors">Deployed Mocks</button>
+                    </div>
+                </div>
+
+                <div id="mockCreateTab" class="block">
+                    <form id="mockServiceForm" onsubmit="submitMockService(event)" class="p-6 space-y-5">
+                        <div class="grid grid-cols-2 gap-4">
+                            <div class="col-span-2 sm:col-span-1">
+                                <label class="block text-sm font-semibold text-slate-700 mb-1">Endpoint Path</label>
+                                <div class="flex rounded-md shadow-sm">
+                                    <span class="inline-flex items-center px-3 rounded-l-md border border-r-0 border-gray-300 bg-gray-50 text-gray-500 text-sm">/mock-api/</span>
+                                    <input type="text" id="mockPath" required placeholder="e.g. leads/create" class="flex-1 block w-full rounded-none rounded-r-md sm:text-sm border-gray-300 focus:ring-indigo-500 focus:border-indigo-500 px-3 py-2 border">
+                                </div>
+                            </div>
+                            <div class="col-span-2 sm:col-span-1">
+                                <label class="block text-sm font-semibold text-slate-700 mb-1">HTTP Method</label>
+                                <select id="mockHttpMethod" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md border">
+                                    <option value="POST">POST</option>
+                                    <option value="GET">GET</option>
+                                    <option value="PUT">PUT</option>
+                                    <option value="DELETE">DELETE</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm font-semibold text-slate-700 mb-1">Response Status Code</label>
+                                <select id="mockStatus" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md border">
+                                    <option value="200">200 - OK (Success)</option>
+                                    <option value="201">201 - Created</option>
+                                    <option value="400">400 - Bad Request (Error)</option>
+                                    <option value="404">404 - Not Found</option>
+                                    <option value="500">500 - Server Error</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-semibold text-slate-700 mb-1">Content Type</label>
+                                <select id="mockContentType" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md border">
+                                    <option value="application/json">JSON (application/json)</option>
+                                    <option value="application/xml">XML (application/xml)</option>
+                                    <option value="text/plain">Text (text/plain)</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-semibold text-slate-700 mb-1">Response Payload</label>
+                            <textarea id="mockPayload" required rows="6" placeholder='{\n  "status": "success"\n}' class="block w-full border border-slate-700 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 sm:text-sm bg-slate-900 text-green-400 font-mono"></textarea>
+                        </div>
+                        <div id="mockResultArea" class="hidden bg-emerald-50 border border-emerald-200 rounded-lg p-4 mt-4">
+                            <p class="text-sm text-emerald-800 font-medium mb-2">✅ Mock Deployed Successfully! Base URL:</p>
+                            <div class="flex items-center gap-2">
+                                <code id="mockFinalUrl" class="flex-1 bg-white px-3 py-2 rounded border border-emerald-200 text-sm font-mono text-slate-700 break-all"></code>
+                                <button type="button" onclick="copyMockUrl()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded text-sm font-medium transition-colors">Copy</button>
+                            </div>
+                        </div>
+                        <div class="pt-4 border-t border-slate-200 flex justify-end gap-3">
+                            <button type="button" onclick="toggleMockModal(false)" class="bg-white py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">Cancel</button>
+                            <button type="submit" id="mockSubmitBtn" class="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors">
+                                Deploy Service
+                            </button>
+                        </div>
+                    </form>
+                </div>
+
+                <div id="mockViewTab" class="hidden p-6 bg-slate-50 min-h-[350px]">
+                    <div class="relative mb-4">
+                        <input type="text" id="mockSearchInput" onkeyup="loadDeployedMocks(this.value)" placeholder="Search by endpoint path..." class="block w-full border-gray-300 rounded-lg shadow-sm py-2.5 pl-4 pr-10 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border">
+                    </div>
+                    <div id="mockListContainer" class="space-y-3 max-h-80 overflow-y-auto pr-2"></div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <script>
+        window.toggleMockModal = function(show) {
+            const modal = document.getElementById('mockServiceModal');
+            const content = document.getElementById('mockModalContent');
+            const resultArea = document.getElementById('mockResultArea');
+            if (show) {
+                document.getElementById('mockServiceForm').reset();
+                resultArea.classList.add('hidden');
+                document.getElementById('mockSubmitBtn').disabled = false;
+                document.getElementById('mockSubmitBtn').innerText = 'Deploy Service';
+                switchMockTab('create');
+                modal.classList.remove('hidden');
+                setTimeout(() => {
+                    modal.classList.remove('opacity-0');
+                    content.classList.remove('scale-95');
+                    content.classList.add('scale-100');
+                }, 10);
+            } else {
+                modal.classList.add('opacity-0');
+                content.classList.remove('scale-100');
+                content.classList.add('scale-95');
+                setTimeout(() => {
+                    modal.classList.add('hidden');
+                }, 300);
+            }
+        };
+
+        window.switchMockTab = function(tab) {
+            const createTab = document.getElementById('mockCreateTab');
+            const viewTab = document.getElementById('mockViewTab');
+            const btnCreate = document.getElementById('tab-create');
+            const btnView = document.getElementById('tab-view');
+            if (tab === 'create') {
+                createTab.classList.remove('hidden');
+                viewTab.classList.add('hidden');
+                btnCreate.className = 'pb-3 border-b-2 border-indigo-600 font-semibold text-indigo-600 transition-colors';
+                btnView.className = 'pb-3 border-b-2 border-transparent font-medium text-slate-500 hover:text-slate-800 transition-colors';
+            } else {
+                createTab.classList.add('hidden');
+                viewTab.classList.remove('hidden');
+                btnView.className = 'pb-3 border-b-2 border-indigo-600 font-semibold text-indigo-600 transition-colors';
+                btnCreate.className = 'pb-3 border-b-2 border-transparent font-medium text-slate-500 hover:text-slate-800 transition-colors';
+                document.getElementById('mockSearchInput').value = ''; 
+                loadDeployedMocks(''); 
+            }
+        };
+
+        window.loadDeployedMocks = async function(query) {
+            const container = document.getElementById('mockListContainer');
+            container.innerHTML = '<div class="text-center text-slate-500 py-6">Loading mocks...</div>';
+            try {
+                const res = await fetch(`/api/mocks/list?query=${encodeURIComponent(query)}`);
+                const mocks = await res.json();
+                if (mocks.length === 0) {
+                    container.innerHTML = '<div class="text-center text-slate-500 py-6">No mocks found.</div>';
+                    return;
+                }
+                let html = '';
+                mocks.forEach(m => {
+                    html += `
+                    <div class="border border-slate-200 rounded-lg p-3 bg-white shadow-sm flex justify-between items-center hover:border-indigo-300 transition-colors">
+                        <div>
+                            <div class="flex items-center gap-2 mb-1">
+                                <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">${m.http_method}</span>
+                                <span class="font-mono text-sm text-indigo-700 font-semibold">/${m.method_name}</span>
+                            </div>
+                            <p class="text-xs text-slate-500">Status: <span class="font-semibold text-slate-700">${m.status_code}</span> | ${m.content_type}</p>
+                        </div>
+                        <button type="button" onclick="copyGenericUrl('${window.location.origin}/mock-api/${m.method_name}', this)" class="text-slate-400 hover:text-indigo-600 bg-slate-50 hover:bg-indigo-50 p-2 rounded border border-slate-200 transition-colors" title="Copy URL">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                        </button>
+                    </div>`;
+                });
+                container.innerHTML = html;
+            } catch(e) {
+                container.innerHTML = '<div class="text-center text-red-500 py-6">Error loading mocks.</div>';
+            }
+        };
+
+        window.submitMockService = async function(event) {
+            event.preventDefault(); 
+            const submitBtn = document.getElementById('mockSubmitBtn');
+            submitBtn.disabled = true;
+            submitBtn.innerText = 'Deploying...';
+            const payloadData = {
+                method_name: document.getElementById('mockPath').value,
+                http_method: document.getElementById('mockHttpMethod').value,
+                status_code: parseInt(document.getElementById('mockStatus').value),
+                content_type: document.getElementById('mockContentType').value,
+                payload: document.getElementById('mockPayload').value,
+                created_by: "System User"
+            };
+            try {
+                const response = await fetch('/api/mocks/create', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payloadData)
+                });
+                const result = await response.json();
+                if (response.ok) {
+                    const fullUrl = window.location.origin + result.mock_url;
+                    document.getElementById('mockFinalUrl').innerText = fullUrl;
+                    document.getElementById('mockResultArea').classList.remove('hidden');
+                    submitBtn.innerText = 'Deployed!';
+                } else {
+                    alert(result.detail || 'Failed to deploy mock.');
+                    submitBtn.disabled = false;
+                    submitBtn.innerText = 'Deploy Service';
+                }
+            } catch (error) {
+                alert('Network error while deploying mock.');
+                submitBtn.disabled = false;
+                submitBtn.innerText = 'Deploy Service';
+            }
+        };
+
+        window.copyMockUrl = function() {
+            const urlText = document.getElementById('mockFinalUrl').innerText;
+            navigator.clipboard.writeText(urlText).then(() => {
+                const btn = event.target;
+                const originalText = btn.innerText;
+                btn.innerText = 'Copied!';
+                btn.classList.replace('bg-emerald-600', 'bg-emerald-800');
+                setTimeout(() => {
+                    btn.innerText = originalText;
+                    btn.classList.replace('bg-emerald-800', 'bg-emerald-600');
+                }, 2000);
+            });
+        };
+
+        window.copyGenericUrl = function(urlText, btnElement) {
+            navigator.clipboard.writeText(urlText).then(() => {
+                const originalHTML = btnElement.innerHTML;
+                btnElement.innerHTML = '<svg class="w-5 h-5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>';
+                setTimeout(() => {
+                    btnElement.innerHTML = originalHTML;
+                }, 1500);
+            });
+        };
+    </script>
+
+    <script src="/js/details.js?v=9"></script>
 </body>
 </html>

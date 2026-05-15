@@ -171,3 +171,4 @@ function renderTable(tableId, data, columns) {
     html += '</tbody>';
     table.innerHTML = html;
 }
+

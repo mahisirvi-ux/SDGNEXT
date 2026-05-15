@@ -138,50 +138,89 @@ def generate_project_mom(project_data: str) -> str:
         return "<p>Error generating MOM. Please review the dashboard manually.</p>"
 
 
-def generate_wud_content(api_name: str, module_name: str, crm_location: str, business_flow: str, input_req: str, output_res: str) -> dict:
+def generate_wud_content(api_name: str, module_name: str, crm_location: str, business_flow: str, input_req: str, output_res: str, integration_type: str = "API") -> dict:
     """Generates formal Introduction, Macro Logic, and Expected Output for the WUD."""
     
+    # Null-safe integration type check
+    safe_type = str(integration_type).strip().lower() if integration_type else "api"
     # Fallback if Bedrock is offline
     if not bedrock_client:
         return {
-            "introduction": f"The '{api_name}' API under the {module_name} module is triggered from {crm_location} to facilitate data transfer.",
+            "introduction": f"The '{api_name}' {integration_type} under the {module_name} module is triggered from {crm_location} to facilitate data transfer.",
             "macro_logic": "• AI Agent offline.\n• Please review manually.",
             "expected_output": "• AI Agent offline.\n• Please review manually."
         }
 
-    system_prompt = """
-    You are an expert Enterprise Integration Business Analyst. 
-    Translate the provided inputs into formal technical specifications for a Work Unit Document (WUD).
+    # ==========================================================
+    # 1. EXACT EXISTING PROMPT FOR 'API' (Untouched)
+    # ==========================================================
+    if integration_type.lower() == "api":
+        system_prompt = """
+        You are an expert Enterprise Integration Business Analyst. 
+        Translate the provided inputs into formal technical specifications for a Work Unit Document (WUD).
 
-    You must output your response STRICTLY as a JSON object with exactly three keys: "introduction", "macro_logic", and "expected_output".
+        You must output your response STRICTLY as a JSON object with exactly three keys: "introduction", "macro_logic", and "expected_output".
 
-    Key 1: "introduction"
-    - Write a professional, concise 2 to 3 line overview.
-    - You MUST explicitly name the Module.
-    - You MUST explicitly state where the API is called within the CRM (e.g., Lead Journey, Onboarding Process, Specific Layout).
-    - Explain the core business purpose of the API.
-    - Output as a standard text paragraph (no bullet points).
+        Key 1: "introduction"
+        - Write a professional, concise 2 to 3 line overview.
+        - You MUST explicitly name the Module.
+        - You MUST explicitly state where the API is called within the CRM (e.g., Lead Journey, Onboarding Process, Specific Layout).
+        - Explain the core business purpose of the API.
+        - Output as a standard text paragraph (no bullet points).
 
-    Key 2: "macro_logic"
-    - Write a step-by-step flow based on the provided Business Flow.
-    - Explicitly state: "Input Parameters will be:" followed by a summary of the provided Input Details.
-    - Explicitly state: "Based On Input Parameter, Output Parameter will be:" followed by a summary of the Output Details.
-    - Output as a bulleted list (use the '•' character and newlines '\n').
+        Key 2: "macro_logic"
+        - Write a step-by-step flow based on the provided Business Flow.
+        - Explicitly state: "Input Parameters will be:" followed by a summary of the provided Input Details.
+        - Explicitly state: "Based On Input Parameter, Output Parameter will be:" followed by a summary of the Output Details.
+        - Output as a bulleted list (use the '•' character and newlines '\n').
 
-    Key 3: "expected_output"
-    - Output as a bulleted list (use the '•' character and newlines '\n').
-    - Bullet 1 MUST start with: "In the success scenario, when valid input is passed, the system will..." and describe the successful outcome based on the Output Details.
-    - Bullet 2 MUST be exactly: "In Failure Scenario, If Invalid Response is passed it will display respective error messages in response."
+        Key 3: "expected_output"
+        - Output as a bulleted list (use the '•' character and newlines '\n').
+        - Bullet 1 MUST start with: "In the success scenario, when valid input is passed, the system will..." and describe the successful outcome based on the Output Details.
+        - Bullet 2 MUST be exactly: "In Failure Scenario, If Invalid Response is passed it will display respective error messages in response."
 
-    Do not include markdown code blocks (like ```json). Return ONLY the raw, valid JSON object.
-    """
+        Do not include markdown code blocks (like ```json). Return ONLY the raw, valid JSON object.
+        """
+        user_prompt = f"API Name: {api_name}\nModule: {module_name}\nTrigger Location in CRM: {crm_location}\nBusiness Flow / Objective: {business_flow}\n\nInput Details:\n{input_req}\n\nOutput Details:\n{output_res}"
 
-    user_prompt = f"API Name: {api_name}\nModule: {module_name}\nTrigger Location in CRM: {crm_location}\nBusiness Flow / Objective: {business_flow}\n\nInput Details:\n{input_req}\n\nOutput Details:\n{output_res}"
+    # ==========================================================
+    # 2. BRAND NEW PROMPT FOR 'DATABASE'
+    # ==========================================================
+    else:
+        system_prompt = """
+        You are an expert Enterprise Integration Business Analyst. 
+        Translate the provided inputs into formal technical specifications for a Database Integration Work Unit Document (WUD).
 
+        You must output your response STRICTLY as a JSON object with exactly three keys: "introduction", "macro_logic", and "expected_output".
+
+        Key 1: "introduction"
+        - Write a professional, concise 2 to 3 line overview.
+        - You MUST explicitly name the Module.
+        - You MUST explicitly state when this database operation (e.g., executing a Stored Procedure, Table Query) is triggered within the CRM.
+        - Explain the core business purpose of this Database integration.
+        - Output as a standard text paragraph (no bullet points).
+
+        Key 2: "macro_logic"
+        - Write a step-by-step flow based on the provided Business Flow.
+        - Explicitly state: "Database Input Parameters/Data will be:" followed by a summary of the provided Input Details.
+        - Explicitly state: "Database Output/Action will be:" followed by a summary of the Output Details.
+        - If applicable, mention executing the Stored Procedure or writing to the Target Object.
+        - Output as a bulleted list (use the '•' character and newlines '\n').
+
+        Key 3: "expected_output"
+        - Output as a bulleted list (use the '•' character and newlines '\n').
+        - Bullet 1 MUST start with: "In the success scenario, the system will successfully..." and describe the successful database transaction based on the Output Details.
+        - Bullet 2 MUST be exactly: "In Failure Scenario, If a database exception or constraint violation occurs, it will log the error and display respective error messages."
+
+        Do not include markdown code blocks (like ```json). Return ONLY the raw, valid JSON object.
+        """
+        user_prompt = f"Integration Name: {api_name}\nModule: {module_name}\nTrigger Location in CRM: {crm_location}\nBusiness Flow / Objective: {business_flow}\n\nInput Details:\n{input_req}\n\nOutput Details:\n{output_res}"
+
+    # ==========================================================
+    # EXECUTION
+    # ==========================================================
     try:
         response_text = _invoke_bedrock(system_prompt, user_prompt, temperature=0.2)
-        
-        # Strip accidental markdown formatting the LLM might have added
         clean_json = re.sub(r'```json|```', '', response_text).strip()
         return json.loads(clean_json)
 
@@ -189,6 +228,6 @@ def generate_wud_content(api_name: str, module_name: str, crm_location: str, bus
         print(f"WUD Content Generation Failed via Bedrock: {e}")
         return {
             "introduction": f"The '{api_name}' integration facilitates seamless data transfer.",
-            "macro_logic": "• Error: Could not generate logic.\n• Please check API.",
-            "expected_output": "• Error: Could not generate output.\n• Please check API."
+            "macro_logic": "• Error: Could not generate logic.\n• Please check parameters.",
+            "expected_output": "• Error: Could not generate output.\n• Please check parameters."
         }

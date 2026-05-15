@@ -18,7 +18,7 @@ from app.workshop_mailer import send_workshop_invites
 from app.wud_engine import create_wud_word
 from app.rgt_engine import generate_rgt
 from app.core.email_dispatcher import send_rgt_invite
-
+from app.api.routes import upload, projects, tasks, integrations, mocks  # <--- Added 'mocks' here
 
 # Force Windows/Python to recognize .js files correctly
 mimetypes.add_type('application/javascript', '.js')
@@ -60,6 +60,7 @@ app.include_router(upload.router)
 app.include_router(projects.router) 
 app.include_router(tasks.router)
 app.include_router(integrations.router)
+app.include_router(mocks.router) # <--- Hooked up the new router
 
 # --- NEW: MANUAL TEST ROUTE ---
 @app.get("/test-daily-email")
@@ -326,8 +327,9 @@ def generate_wud_word_endpoint(tp_id: int):
     
     tp_data = data_response["data"]
     
-    if tp_data.get("integration", "").lower() != "api":
-        raise HTTPException(status_code=400, detail="WUD Generation is currently only supported for API Integration Types.")
+    integration_type = tp_data.get("integration", "").lower()
+    if integration_type not in ["api", "database"]:
+        raise HTTPException(status_code=400, detail=f"WUD Generation is not supported for type: {integration_type}")
 
     try:
         # Call the new Word generator

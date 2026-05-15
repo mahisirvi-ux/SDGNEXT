@@ -94,3 +94,30 @@ class IDRTechnical(Base):
     
     # Historical Tracking
     open_pointers = Column(Text)
+
+    # ============================================================
+# MOCK SERVICE ENGINE
+# ============================================================
+class MockService(Base):
+    """Stores user-defined mock API responses."""
+    __tablename__ = "mock_services"
+
+    id = Column(Integer, primary_key=True, index=True)
+    
+    # The endpoint path (e.g., 'leads/create')
+    method_name = Column(String(200), index=True, nullable=False) 
+    
+    # Support for different HTTP methods
+    http_method = Column(String(10), default="POST", nullable=False)
+    
+    # Support for testing error codes (200, 400, 500)
+    status_code = Column(Integer, default=200, nullable=False)
+    
+    # Auto-detect JSON or XML
+    content_type = Column(String(50), default="application/json")
+    
+    # The actual response string
+    payload = Column(Text, nullable=False)
+    
+    created_at = Column(TIMESTAMP, server_default=func.now())
+    created_by = Column(String(100), default="System")
