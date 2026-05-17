@@ -16,6 +16,16 @@ function switchTab(tabName) {
         tab.classList.remove('pill-inactive');
         tab.classList.add('pill-active');
     }
+        // Lazy-load MoM data on first tab visit
+    if (tabName === 'mom' && typeof loadMomData === 'function') {
+        const tpId = document.getElementById('fd-id').value;
+        if (tpId) loadMomData(tpId);
+    }
+    // Lazy-load Follow-Ups on first tab visit
+    if (tabName === 'followups' && typeof loadFollowups === 'function') {
+        const tpId = document.getElementById('fd-id').value;
+        if (tpId) loadFollowups(tpId);
+    }
 }
 
 // ==========================================
@@ -53,10 +63,10 @@ function populatePage(tp) {
     document.getElementById('fd-name').innerText = tp.name;
 
     // Key Info Strip
-    document.getElementById('fd-strip-module').innerText = tp.module || '-';
+        document.getElementById('fd-strip-module').innerText = tp.module || '-';
     document.getElementById('fd-strip-source').innerText = tp.source || '-';
     document.getElementById('fd-strip-target').innerText = tp.target || '-';
-    document.getElementById('fd-strip-status').innerText = (tp.techDetails || {}).rgtStatus || 'Pending';
+    document.getElementById('fd-strip-integration').innerText = (tp.integration || 'Unassigned').toUpperCase();
 
     // Basic Info: Profile fields
     document.getElementById('fd-val-flow').innerText = tp.business_flow || '-';
@@ -70,7 +80,7 @@ function populatePage(tp) {
     const rawEnd = (tp.end && tp.end !== "-" && tp.end !== "None") ? tp.end : "";
     const [sDate = "", sTime = ""] = rawStart.split(" ");
     const [eDate = "", eTime = ""] = rawEnd.split(" ");
-        document.getElementById('fd-start').value = sDate;
+    document.getElementById('fd-start').value = sDate;
     document.getElementById('fd-start-time').value = sTime;
     document.getElementById('fd-end').value = eDate;
     document.getElementById('fd-end-time').value = eTime;
@@ -80,17 +90,20 @@ function populatePage(tp) {
     setVal('fd-effort', td.effort || "");
     setVal('fd-attendees', td.attendees || "");
 
+    // Status & Pending With
+    setVal('fd-tech-status', tp.techStatus || "Pending Workshop");
+    setVal('fd-pending-with', tp.pendingWith || td.pendingWith || "");
+
     // Workshop Planning Timeline
     const wsStatus = td.workshopStage || determineWorkshopStage(tp);
     updateWorkshopTimeline(wsStatus, tp);
 
-    // Tracking tab
-    document.getElementById('fd-discussion').value = td.discussion || "";
-    document.getElementById('fd-pointers').value = tp.history_log || "";
+        // Load attachments
+        loadDocuments(tp.id);
 
     // API fields (only set if element exists)
     const intType = (tp.integration || "").toLowerCase();
-        if (intType === 'api') {
+    if (intType === 'api') {
         // Basic Info
         setVal('fd-api-name', td.apiName || tp.name || "");
         setVal('fd-api-type', td.apiType || "");
@@ -127,11 +140,12 @@ function populatePage(tp) {
     }
 }
 
-// Helper: safely set value on an element (won't crash if element removed)
+// Helper: safely set value on an element
 function setVal(id, value) {
     const el = document.getElementById(id);
     if (el) el.value = value;
 }
+
 // Helper: safely get value from an element
 function getVal(id) {
     const el = document.getElementById(id);
@@ -145,10 +159,6 @@ function toggleDetailsEditMode() {
     document.querySelectorAll('input, textarea, select').forEach(el => {
         if (el.type !== 'hidden') el.disabled = false;
     });
-    const pointersBox = document.getElementById('fd-pointers');
-    pointersBox.dataset.oldLog = pointersBox.value;
-    pointersBox.value = "";
-    pointersBox.placeholder = "Type a new update to append to the log...";
     document.getElementById('fd-btn-edit').classList.add('hidden');
     document.getElementById('fd-btn-save').classList.remove('hidden');
 }
@@ -163,14 +173,13 @@ async function saveFullDetails() {
     saveBtn.innerText = "Saving...";
 
         const techDetails = {
-        discussion: document.getElementById('fd-discussion').value,
-        pointers: document.getElementById('fd-pointers').value,
         criticality: getVal('fd-criticality'),
         effort: getVal('fd-effort'),
-        attendees: getVal('fd-attendees')
+        attendees: getVal('fd-attendees'),
+        pendingWith: getVal('fd-pending-with')
     };
 
-        if (intType === 'api') {
+    if (intType === 'api') {
         // Basic Info
         techDetails.apiName = getVal('fd-api-name');
         techDetails.apiType = getVal('fd-api-type');
@@ -218,7 +227,7 @@ async function saveFullDetails() {
                 integration: currentData.integration,
                 start: combineDT('fd-start', 'fd-start-time'),
                 end: combineDT('fd-end', 'fd-end-time'),
-                status: currentData.techStatus,
+                status: getVal('fd-tech-status') || currentData.techStatus,
                 technical_details: techDetails
             })
         });
@@ -272,62 +281,95 @@ async function generateWUD() {
         btn.classList.remove('opacity-75');
     }
 }
+
 // ==========================================
 // WORKSHOP TIMELINE
 // ==========================================
 function determineWorkshopStage(tp) {
-    // Auto-determine stage based on available data
     const techStatus = (tp.techStatus || "").toLowerCase();
-    const hasSchedule = tp.start && tp.start !== "-" && tp.start !== "None";
     const td = tp.techDetails || {};
+    const hasSchedule = tp.start && tp.start !== "-" && tp.start !== "None" && tp.start.trim() !== "";
+    const rgtShared = !!td.rgtSharedAt;
 
-    if (techStatus === 'completed' || techStatus === 'signed-off') return 3;
-    if (hasSchedule || techStatus === 'in progress' || td.apiUrl || td.apiReq) return 2;
-    if (tp.owner || tp.source) return 1;
+    if (techStatus === 'completed') return 5;
+    if (techStatus === 'document review') return 4;
+    if (techStatus === 'pending document') return 3;
+    if (rgtShared) return 2;
+    if (hasSchedule) return 1;
     return 0;
 }
 
 function updateWorkshopTimeline(stage, tp) {
-    const dot1 = document.getElementById('ws-dot-1');
-    const dot2 = document.getElementById('ws-dot-2');
-    const dot3 = document.getElementById('ws-dot-3');
-    const info1 = document.getElementById('ws-step1-info');
-    const info2 = document.getElementById('ws-step2-info');
-    const info3 = document.getElementById('ws-step3-info');
-
     const td = tp.techDetails || {};
-    const signoff = tp.signoff || '';
     const startDate = (tp.start && tp.start !== "-" && tp.start !== "None") ? tp.start.split(" ")[0] : '';
+    const rgtDate = td.rgtSharedAt ? td.rgtSharedAt.split(" ")[0] : '';
 
-    // Step 1: Scoping
-    if (stage >= 1) {
-        dot1.className = 'w-3 h-3 rounded-full bg-emerald-500 flex-shrink-0 mt-0.5';
-        info1.innerText = 'Done' + (tp.owner ? ' · ' + tp.owner : '');
-    } else {
-        dot1.className = 'w-3 h-3 rounded-full bg-slate-300 flex-shrink-0 mt-0.5';
-        info1.innerText = 'Not started';
-    }
+    const steps = [
+        { dot: 'ws-dot-1', info: 'ws-step1-info', doneText: 'Scheduled' + (startDate ? ' \u00B7 ' + startDate : '') },
+        { dot: 'ws-dot-2', info: 'ws-step2-info', doneText: 'Sent' + (rgtDate ? ' \u00B7 ' + rgtDate : '') },
+        { dot: 'ws-dot-3', info: 'ws-step3-info', doneText: 'Done \u00B7 Pending Document' },
+        { dot: 'ws-dot-4', info: 'ws-step4-info', doneText: 'Document Received' },
+        { dot: 'ws-dot-5', info: 'ws-step5-info', doneText: 'Completed' },
+    ];
 
-    // Step 2: Technical Workshop
-    if (stage >= 2) {
-        if (stage > 2) {
-            dot2.className = 'w-3 h-3 rounded-full bg-emerald-500 flex-shrink-0 mt-0.5';
-            info2.innerText = 'Done' + (startDate ? ' · ' + startDate : '');
+        steps.forEach((step, idx) => {
+        const dot = document.getElementById(step.dot);
+        const info = document.getElementById(step.info);
+        if (!dot || !info) return;
+
+        const stepNum = idx + 1;
+        if (stepNum < stage) {
+            // Completed step
+            dot.className = 'w-3 h-3 rounded-full bg-emerald-500 flex-shrink-0 mt-0.5';
+            info.innerText = step.doneText;
+            info.className = 'text-[10px] text-emerald-600 mt-0.5 font-medium';
+        } else if (stepNum === stage) {
+            // Current active step
+            dot.className = 'w-3 h-3 rounded-full bg-indigo-500 flex-shrink-0 mt-0.5';
+            info.innerText = step.doneText;
+            info.className = 'text-[10px] text-indigo-600 mt-0.5 font-medium';
         } else {
-            dot2.className = 'w-3 h-3 rounded-full bg-indigo-500 flex-shrink-0 mt-0.5';
-            info2.innerText = (startDate ? 'Scheduled · ' + startDate : 'Pending · Schedule with vendor');
+            // Future step
+            dot.className = 'w-3 h-3 rounded-full bg-slate-300 flex-shrink-0 mt-0.5';
+            info.innerText = 'Not started';
+            info.className = 'text-[10px] text-slate-400 mt-0.5';
         }
-    } else {
-        dot2.className = 'w-3 h-3 rounded-full bg-slate-300 flex-shrink-0 mt-0.5';
-        info2.innerText = 'Not started';
-    }
+    });
+}
 
-    // Step 3: Blueprint & Signoff
-    if (stage >= 3) {
-        dot3.className = 'w-3 h-3 rounded-full bg-emerald-500 flex-shrink-0 mt-0.5';
-        info3.innerText = 'Done' + (signoff ? ' · ' + signoff : '');
-    } else {
-        dot3.className = 'w-3 h-3 rounded-full bg-slate-300 flex-shrink-0 mt-0.5';
-        info3.innerText = 'Not started';
+// ==========================================
+// ATTACHMENTS / DOCUMENTS
+// ==========================================
+async function loadDocuments(tpId) {
+    try {
+        const response = await fetch(`/api/phase2/touchpoint/${tpId}/documents`);
+        const result = await response.json();
+        const container = document.getElementById('fd-documents-list');
+        const countBadge = document.getElementById('fd-doc-count');
+
+        if (result.status === 'success' && result.documents.length > 0) {
+            countBadge.innerText = `${result.documents.length} file(s)`;
+            container.innerHTML = result.documents.map(doc => `
+                <div class="flex items-center justify-between p-3 bg-slate-50 border border-slate-100 rounded-lg hover:border-indigo-200 transition-colors">
+                    <div class="flex items-center gap-3">
+                        <div class="w-8 h-8 bg-indigo-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                            <svg class="w-4 h-4 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                        </div>
+                        <div>
+                            <p class="text-[12px] font-semibold text-slate-800">${doc.filename}</p>
+                            <p class="text-[10px] text-slate-400">${doc.received_at} &middot; ${doc.received_from.split('<')[0].trim()}</p>
+                        </div>
+                    </div>
+                    <a href="/api/phase2/document/${doc.id}/download" class="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50 px-3 py-1.5 rounded-md hover:bg-indigo-100 transition-colors">
+                        Download
+                    </a>
+                </div>
+            `).join('');
+        } else {
+            countBadge.innerText = '0 files';
+            container.innerHTML = '<p class="text-sm text-slate-400 italic">No documents received yet.</p>';
+        }
+    } catch (err) {
+        console.error('Failed to load documents:', err);
     }
 }

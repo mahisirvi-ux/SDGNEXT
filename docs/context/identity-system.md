@@ -194,6 +194,18 @@ through the validator on write, enriched on read.
 | `pending_with` | ❌ **GAP** — not currently validated | ❌ raw string returned in `main.py:400` |
 | `source_system` | ❌ this is a system name, not a person | — |
 
+### `IDRMomEntry` (Touchpoint MoM)
+| Column | Validated on write? | Enriched on read? |
+|---|---|---|
+| `owner` | ✅ via `resolve_team_member` in session-scoped `mom.py` router | ✅ via `enrich_owner_label` on GET |
+
+### `FollowUpItem` (Follow-Ups)
+| Column | Validated on write? | Enriched on read? |
+|---|---|---|
+| `owner` | ✅ via `resolve_team_member` in `followups.py` router | ✅ via `enrich_owner_label` on GET |
+| `closed_by` | ❌ placeholder "User" (BusinessNEXT user, not team_master) | ❌ |
+| `created_by` | ❌ placeholder "User" (BusinessNEXT user, not team_master) | ❌ |
+
 > ⚠️ **Known gap**: `IDRTechnical.pending_with` is written without validator
 > and read without enrichment. When working on Phase 2 features, fix this
 > by routing through `resolve_pending_with` on write and
@@ -263,6 +275,9 @@ Equally important — the existing taxonomy of action types:
 | `"DISCUSSION"` | `main.py:254, 288` | A free-text discussion / remark added to the touchpoint timeline. |
 | `"POINTER"` | `main.py:264, 295` | A new open pointer raised on the touchpoint. |
 | `"STATUS_CHANGE"` | `inbound_service.py:103` | Auto-generated when a bank reply lands and a status flips. |
+| `"MOM_SENT"` | `mom.py:send_session_mom_endpoint` | Logged atomically when a touchpoint MoM email is dispatched. Comment format: "MoM session #{id} ({date}) emailed to {N} recipients; {K} follow-ups spawned". |
+| `"FOLLOWUP_CLOSED"` | `followups.py:close_followup` | Logged when a follow-up item is marked closed. Comment includes followup id and description snippet. |
+| `"FOLLOWUP_REOPENED"` | `followups.py:reopen_followup` | Logged when a closed follow-up is reopened. |
 | `"Manual Update"` | `tasks.py:169` | Generic manual edit catch-all. |
 
 **Don't invent new action_types informally.** Add to this table and
@@ -284,7 +299,12 @@ recipients through `team_master`:
 | Symptom | Cause |
 |---|---|
 | Follow-up email not sent for a touchpoint | `pending_with` name doesn't resolve in this project |
+| Follow-up nudge skipped for owner | Owner name on `FollowUpItem` can't be resolved in team_master for this project |
 | Touchpoint missing from workshop invite group | Owner's department isn't in `department_master` for this project |
+
+**Note:** Follow-up nudge emails use a deterministic HTML template
+(`_render_nudge_html` in `email_engine.py`), NOT Bedrock/AI. They are
+therefore not affected by AWS Bedrock outages.
 | Daily summary shows blank owner column | Read endpoint not using `enrich_owner_label` |
 
 These fail **silently**. The UI looks healthy, but the bank contact never
@@ -359,6 +379,9 @@ Tracked here so they aren't forgotten when planning Phase 3 / hardening:
 - [ ] Stale `team_master` entries (people who've left the bank) — no
       soft-delete UX exists; `is_active` flag exists but no admin UI to
       toggle it.
+- [ ] MoM sessions with status="SENT" are immutable. No endpoint may
+      modify entries, discussions, or status of a SENT session. Enforce
+      at the router level via `_check_not_sent()` guard.
 - [ ] Alias support (e.g., "Rahul" vs "Rahul K." resolving to same
       person) — not currently supported.
 - [ ] When a row in `team_master` is deactivated, existing free-text

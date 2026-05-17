@@ -122,6 +122,13 @@ def dispatch_tomorrow_rgts(project_name: str):
                 rgt_buffer = generate_rgt(tp_data)
                 success = send_rgt_invite(to_emails, cc_emails, tp_data, rgt_buffer)
                 if success:
+                    # Mark RGT as shared in technical_details
+                    from sqlalchemy.orm.attributes import flag_modified
+                    current_td = dict(tech.technical_details or {})
+                    current_td["rgtSharedAt"] = datetime.now().strftime("%Y-%m-%d %H:%M")
+                    tech.technical_details = current_td
+                    flag_modified(tech, "technical_details")
+                    db.commit()
                     results["successful"].append({"wud_id": tp.id, "name": tp.name})
                 else:
                     results["failed"].append({"wud_id": tp.id, "name": tp.name, "error": "SMTP failed"})

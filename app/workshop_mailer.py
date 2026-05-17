@@ -4,7 +4,7 @@ from email.mime.text import MIMEText
 from datetime import date, timedelta, datetime
 from collections import defaultdict
 from app.core.database import SessionLocal
-from app.models.domain import IntegrationTouchpoint, IDRFunctional, IDRTechnical, TeamMaster, DepartmentMaster
+from app.models.domain import IntegrationTouchpoint, IDRFunctional, IDRTechnical, TeamMaster, DepartmentMaster, IDRActionLog
 
 # --- CONFIGURATION (Re-using your Phase 1 Setup) ---
 SMTP_SERVER = "smtp.gmail.com"  
@@ -238,6 +238,7 @@ def send_workshop_invites():
 
             group["items"].append({
                 "name": tp.name,
+                "tp_id": tp.id,
                 "module": func.module or "-",
                 "owner": owner_identity["display_name"],
                 "integration": integration.upper(),
@@ -257,7 +258,7 @@ def send_workshop_invites():
             dept_email = group["dept_email"]
             items = group["items"]
 
-                        # Build TO list: all bank owners + technical/module owners (de-duped)
+            # Build TO list: all bank owners + technical/module owners (de-duped)
             all_to_emails = set()
             all_to_emails.update(group["owner_emails"])
             all_to_emails.update(group["crm_emails"])
@@ -286,7 +287,7 @@ def send_workshop_invites():
             </div>
             """
 
-                        # Build touchpoint summary table
+            # Build touchpoint summary table
             table_rows = ""
             for item in items:
                 table_rows += f"""
@@ -359,7 +360,7 @@ def send_workshop_invites():
 
             msg.attach(MIMEText(html_content, "html"))
 
-            # Envelope recipients = To + CC (for SMTP delivery)
+                        # Envelope recipients = To + CC (for SMTP delivery)
             envelope_recipients = list(all_to_emails)
             if dept_email and dept_email not in all_to_emails:
                 envelope_recipients.append(dept_email)
@@ -368,6 +369,15 @@ def send_workshop_invites():
                 server.starttls()
                 server.login(SMTP_USERNAME, SMTP_PASSWORD)
                 server.sendmail(SMTP_USERNAME, envelope_recipients, msg.as_string())
+
+            # Update status to 'Scheduled' for all touchpoints in this batch
+            for item in items:
+                tp_id = item.get("tp_id")
+                if tp_id:
+                    tech_rec = db.query(IDRTechnical).filter(IDRTechnical.touchpoint_id == tp_id).first()
+                    if tech_rec and tech_rec.tech_status not in ["Completed", "Document Review", "Pending Document"]:
+                        tech_rec.tech_status = "Scheduled"
+            db.commit()
 
             to_list_display = ", ".join(sorted(group["owner_names"] | group["crm_names"]))
             print(f"[{datetime.now()}] ✅ Workshop Invite sent for dept '{dept_name}' "

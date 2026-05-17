@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, Date, DateTime, JSON, Boolean, ForeignKey, TIMESTAMP, UniqueConstraint
+from sqlalchemy import Column, Integer, String, Text, Date, DateTime, JSON, Boolean, ForeignKey, TIMESTAMP, UniqueConstraint, Index
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from app.core.database import Base
@@ -148,3 +148,105 @@ class TeamMaster(Base):
     )
 
     department = relationship("DepartmentMaster", back_populates="members")
+class TechnicalDocument(Base):
+    """Stores received documents from bank teams for audit trail."""
+    __tablename__ = "technical_documents"
+
+    id = Column(Integer, primary_key=True, index=True)
+    touchpoint_id = Column(Integer, ForeignKey("integration_touchpoints.id", ondelete="CASCADE"), index=True)
+    filename = Column(String(255), nullable=False)
+    file_data = Column(Text, nullable=False)  # Base64 encoded file content
+    file_type = Column(String(50), default="docx")
+    received_from = Column(String(150))  # Email sender
+    received_at = Column(TIMESTAMP, server_default=func.now())
+    notes = Column(Text)
+
+
+# ============================================================
+# MoM MODEL (Touchpoint-Level Minutes of Meeting)
+# ============================================================
+
+class MomSession(Base):
+    """A per-touchpoint, per-day MoM session. Immutable once SENT."""
+    __tablename__ = "mom_sessions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    touchpoint_id = Column(Integer, ForeignKey("integration_touchpoints.id", ondelete="CASCADE"), nullable=False)
+    session_date = Column(Date, nullable=False)
+    status = Column(String(20), nullable=False, default="DRAFT")  # DRAFT, GENERATED, SENT
+    generated_html = Column(Text, nullable=True)
+    sent_at = Column(TIMESTAMP, nullable=True)
+    sent_to = Column(JSON, nullable=True)
+    created_by = Column(String(100), default="User")
+    created_at = Column(TIMESTAMP, server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint('touchpoint_id', 'session_date', name='uq_touchpoint_session_date'),
+        Index('ix_mom_session_tp_date', 'touchpoint_id', 'session_date'),
+    )
+
+    entries = relationship("IDRMomEntry", back_populates="session", cascade="all, delete-orphan")
+    discussions = relationship("IDRDiscussionEntry", back_populates="session", cascade="all, delete-orphan")
+
+
+class IDRMomEntry(Base):
+    """A single action-item line in a touchpoint-level MoM."""
+    __tablename__ = "idr_mom_entries"
+
+    id = Column(Integer, primary_key=True, index=True)
+    touchpoint_id = Column(Integer, ForeignKey("integration_touchpoints.id", ondelete="CASCADE"), nullable=False, index=True)
+    session_id = Column(Integer, ForeignKey("mom_sessions.id", ondelete="CASCADE"), nullable=True, index=True)
+    description = Column(Text, nullable=False)
+    action_point = Column(Text)
+    owner = Column(String(100))
+    expected_date = Column(Date, nullable=True)
+    created_by = Column(String(100), default="User")
+    created_at = Column(TIMESTAMP, server_default=func.now())
+
+    session = relationship("MomSession", back_populates="entries")
+
+
+class IDRDiscussionEntry(Base):
+    """A discussion note captured during a touchpoint workshop/meeting."""
+    __tablename__ = "idr_discussion_entries"
+
+    id = Column(Integer, primary_key=True, index=True)
+    touchpoint_id = Column(Integer, ForeignKey("integration_touchpoints.id", ondelete="CASCADE"), nullable=False, index=True)
+    session_id = Column(Integer, ForeignKey("mom_sessions.id", ondelete="CASCADE"), nullable=True, index=True)
+    content = Column(Text, nullable=False)
+    created_by = Column(String(100), default="User")
+    created_at = Column(TIMESTAMP, server_default=func.now())
+
+    session = relationship("MomSession", back_populates="discussions")
+
+
+# ============================================================
+# FOLLOW-UP MODEL
+# ============================================================
+
+class FollowUpItem(Base):
+    """Structured follow-up action items, spawned from MoM or created manually."""
+    __tablename__ = "follow_up_items"
+
+    id = Column(Integer, primary_key=True, index=True)
+    touchpoint_id = Column(Integer, ForeignKey("integration_touchpoints.id", ondelete="CASCADE"), nullable=False)
+    source_mom_entry_id = Column(Integer, ForeignKey("idr_mom_entries.id", ondelete="SET NULL"), nullable=True)
+    source_session_id = Column(Integer, ForeignKey("mom_sessions.id", ondelete="SET NULL"), nullable=True)
+    description = Column(Text, nullable=False)
+    action = Column(Text, nullable=True)
+    owner = Column(String(100), nullable=True)
+    due_date = Column(Date, nullable=True)
+    status = Column(String(20), nullable=False, default="OPEN")
+    closed_at = Column(TIMESTAMP, nullable=True)
+    closed_by = Column(String(100), nullable=True)
+    close_note = Column(Text, nullable=True)
+    last_nudged_at = Column(Date, nullable=True)
+    created_by = Column(String(100), default="User")
+    created_at = Column(TIMESTAMP, server_default=func.now())
+    updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        Index('ix_followup_tp_status', 'touchpoint_id', 'status'),
+        Index('ix_followup_status_due', 'status', 'due_date'),
+        Index('ix_followup_source', 'source_mom_entry_id'),
+    )

@@ -8,7 +8,7 @@ from email.mime.application import MIMEApplication
 from app.core.ai_agent import generate_stakeholder_intro
 from app.core.database import SessionLocal
 from app.models.domain import IDRFunctional, IntegrationTouchpoint, TeamMaster, IDRActionLog
-from datetime import datetime
+from datetime import datetime, date, timedelta
 
 # --- CONFIGURATION ---
 SMTP_SERVER = "smtp.gmail.com"  
@@ -16,6 +16,45 @@ SMTP_PORT = 587
 SMTP_USERNAME = "mahi.sirvi@gmail.com"
 SMTP_PASSWORD = "klrynpcgevlubkfj" 
 RECIPIENTS = ["mahi.sirvi@gmail.com", "gautampatidar15501@gmail.com"]
+
+
+def _render_nudge_html(owner_display: str, items: list) -> str:
+    """Render follow-up nudge email body from a deterministic template.
+    No AI/Bedrock dependency. Items is a list of dicts with keys:
+    touchpoint_name, description, action, due_date, urgency."""
+    rows = ""
+    for item in items:
+        urgency = item.get("urgency", "")
+        if "Overdue" in urgency:
+            color = "#dc2626"
+        elif "Due today" in urgency:
+            color = "#d97706"
+        else:
+            color = "#64748b"
+        rows += (
+            f"<tr>"
+            f"<td style='border:1px solid #e2e8f0;padding:8px 10px;'>{item.get('touchpoint_name','')}</td>"
+            f"<td style='border:1px solid #e2e8f0;padding:8px 10px;'>{item.get('description','')}</td>"
+            f"<td style='border:1px solid #e2e8f0;padding:8px 10px;'>{item.get('action','')}</td>"
+            f"<td style='border:1px solid #e2e8f0;padding:8px 10px;'>{item.get('due_date','--')}</td>"
+            f"<td style='border:1px solid #e2e8f0;padding:8px 10px;color:{color};font-weight:bold;'>{urgency}</td>"
+            f"</tr>"
+        )
+
+    return (
+        f"<p style='margin:0 0 12px;'>Hi {owner_display},</p>"
+        f"<p style='margin:0 0 16px;'>You have <strong>{len(items)}</strong> open follow-up(s) requiring your attention.</p>"
+        f"<table style='border-collapse:collapse;width:100%;font-size:13px;'>"
+        f"<thead><tr style='background:#f1f5f9;'>"
+        f"<th style='border:1px solid #e2e8f0;padding:8px 10px;text-align:left;'>Touchpoint</th>"
+        f"<th style='border:1px solid #e2e8f0;padding:8px 10px;text-align:left;'>Description</th>"
+        f"<th style='border:1px solid #e2e8f0;padding:8px 10px;text-align:left;'>Action</th>"
+        f"<th style='border:1px solid #e2e8f0;padding:8px 10px;text-align:left;'>Due</th>"
+        f"<th style='border:1px solid #e2e8f0;padding:8px 10px;text-align:left;'>Urgency</th>"
+        f"</tr></thead><tbody>{rows}</tbody></table>"
+        f"<p style='margin:16px 0 0;'>Please update the status once resolved.</p>"
+        f"<p style='margin:4px 0 0;color:#94a3b8;font-size:12px;'>&mdash; SDGNext Automated Nudge</p>"
+    )
 
 def generate_and_send_daily_summary():
     """Queries the database and sends the daily executive summary."""
@@ -305,6 +344,164 @@ def generate_and_send_follow_ups():
                   f"({dept_name}) for {len(items)} items.")
 
     except Exception as e:
-        print(f"[{datetime.now()}] Failed to send follow-ups: {e}")
+                print(f"[{datetime.now()}] Failed to send follow-ups: {e}")
+    finally:
+        db.close()
+
+
+def send_followup_nudges():
+    """Sends daily follow-up nudge emails for ALL open items per owner.
+
+    Behavior:
+    - Every day: include ALL open follow-ups for each owner (no due-date gating).
+    - Throttle: once per day via last_nudged_at (prevents same-day duplicates).
+    - Threading: uses a fixed subject per (owner, project) so subsequent days'
+      emails land in the same thread. Uses In-Reply-To/References headers with
+      a deterministic Message-ID pattern.
+    - If new items were added since yesterday, they appear in today's email.
+    - Closed items drop out automatically.
+    """
+    from app.models.domain import FollowUpItem, DepartmentMaster, Project
+    from app.services.identity_validator import resolve_member_email_and_cc
+    import hashlib
+
+    db = SessionLocal()
+    try:
+        today = date.today()
+        print(f"[{datetime.now()}] Running follow-up nudge job...")
+
+        # Fetch ALL open follow-ups with their touchpoint
+        open_items = db.query(FollowUpItem, IntegrationTouchpoint).join(
+            IntegrationTouchpoint, FollowUpItem.touchpoint_id == IntegrationTouchpoint.id
+        ).filter(FollowUpItem.status == "OPEN").all()
+
+        if not open_items:
+            print(f"[{datetime.now()}] No open follow-ups. Skipping nudges.")
+            return
+
+        # Group ALL open items by (owner_lower, project_id)
+        # Skip items with no owner or already nudged today
+        grouped = {}
+        for fu, tp in open_items:
+            if not fu.owner or not fu.owner.strip():
+                continue
+            # Throttle: skip if already nudged today
+            if fu.last_nudged_at and fu.last_nudged_at >= today:
+                continue
+
+            key = (fu.owner.strip().lower(), tp.project_id)
+            if key not in grouped:
+                grouped[key] = {"owner": fu.owner, "project_id": tp.project_id, "items": [], "fu_objects": []}
+
+            # Determine urgency label for display
+            if fu.due_date:
+                if fu.due_date == today:
+                    urgency = "Due today"
+                elif fu.due_date < today:
+                    days_over = (today - fu.due_date).days
+                    urgency = f"Overdue by {days_over} day(s)"
+                else:
+                    days_left = (fu.due_date - today).days
+                    urgency = f"Due in {days_left} day(s)"
+            else:
+                urgency = "No due date"
+
+            grouped[key]["items"].append({
+                "touchpoint_name": tp.name or "Unknown",
+                "description": fu.description or "",
+                "action": fu.action or "",
+                "due_date": fu.due_date.isoformat() if fu.due_date else "--",
+                "urgency": urgency
+            })
+            grouped[key]["fu_objects"].append(fu)
+
+        if not grouped:
+            print(f"[{datetime.now()}] All open items already nudged today. Skipping.")
+            return
+
+        sent_count = 0
+        skipped = []
+
+        for key, group in grouped.items():
+            owner_name = group["owner"]
+            project_id = group["project_id"]
+            items = group["items"]
+            fu_objects = group["fu_objects"]
+
+            # Resolve recipient
+            to_email, cc_email, display = resolve_member_email_and_cc(
+                db, owner_name, project_id=project_id
+            )
+            if not to_email:
+                skipped.append(owner_name)
+                print(f"[{datetime.now()}] Nudge skipped: '{owner_name}' unresolved in project {project_id}")
+                continue
+
+            # Resolve project name for subject
+            project = db.query(Project).filter(Project.id == project_id).first()
+            project_name = project.project_name if project else "Project"
+
+            # Generate templated content
+            nudge_body = _render_nudge_html(display or owner_name, items)
+
+            # Branded wrapper
+            today_str = datetime.now().strftime("%B %d, %Y")
+            final_html = (
+                "<html><body style='font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;"
+                "color:#1e293b;background:#f8fafc;padding:30px;'>"
+                "<div style='max-width:700px;margin:0 auto;background:white;border-radius:8px;"
+                "box-shadow:0 4px 6px rgba(0,0,0,0.05);overflow:hidden;border-top:4px solid #f59e0b;'>"
+                f"<div style='padding:30px;'>"
+                f"<h2 style='margin:0 0 10px;color:#0f172a;font-size:18px;'>Action Items Follow-Up</h2>"
+                f"<p style='color:#64748b;font-size:13px;margin:0 0 20px;'>{today_str}</p>"
+                f"<div style='line-height:1.6;font-size:14px;'>{nudge_body}</div>"
+                f"</div>"
+                "<div style='padding:15px;text-align:center;background:#f8fafc;"
+                "border-top:1px solid #e2e8f0;font-size:11px;color:#94a3b8;'>"
+                "Automated reminder via <strong>SDGNext Command Center</strong></div>"
+                "</div></body></html>"
+            )
+
+            # Threading: use a fixed subject so all nudges for this owner+project
+            # land in the same email thread. Generate a deterministic thread ID
+            # for In-Reply-To/References headers.
+            thread_subject = f"Follow-Up: Open Action Items - {project_name} [{owner_name}]"
+            thread_seed = f"sdgnext-followup-{project_id}-{owner_name.lower().strip()}"
+            thread_id = f"<{hashlib.md5(thread_seed.encode()).hexdigest()}@sdgnext.local>"
+
+            msg = MIMEMultipart("alternative")
+            msg["Subject"] = thread_subject
+            msg["From"] = SMTP_USERNAME
+            msg["To"] = to_email
+            if cc_email and cc_email.lower() != to_email.lower():
+                msg["Cc"] = cc_email
+            # Thread headers: every email references the same thread_id
+            msg["In-Reply-To"] = thread_id
+            msg["References"] = thread_id
+            msg.attach(MIMEText(final_html, "html"))
+
+            envelope = [to_email]
+            if cc_email and cc_email.lower() != to_email.lower():
+                envelope.append(cc_email)
+
+            try:
+                with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+                    server.starttls()
+                    server.login(SMTP_USERNAME, SMTP_PASSWORD)
+                    server.sendmail(SMTP_USERNAME, envelope, msg.as_string())
+
+                # Update last_nudged_at for all items included
+                for fu in fu_objects:
+                    fu.last_nudged_at = today
+                db.commit()
+                sent_count += 1
+                print(f"[{datetime.now()}] Nudge sent to {owner_name} ({to_email}) for {len(items)} open item(s).")
+            except Exception as mail_err:
+                print(f"[{datetime.now()}] Failed to send nudge to {owner_name}: {mail_err}")
+
+        print(f"[{datetime.now()}] Nudge job complete. Sent: {sent_count}, Skipped: {len(skipped)}")
+
+    except Exception as e:
+        print(f"[{datetime.now()}] Follow-up nudge job FAILED: {e}")
     finally:
         db.close()

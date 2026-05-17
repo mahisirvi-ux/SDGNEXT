@@ -89,42 +89,85 @@
                     Workshop Planning
                 </h3>
 
-                <!-- Timeline Steps -->
+                                <!-- Timeline Steps -->
                 <div class="space-y-0 mb-4">
-                    <!-- Step 1: Initial Scoping -->
+                    <!-- Step 1: Workshop Scheduled -->
                     <div class="flex gap-3">
                         <div class="flex flex-col items-center">
-                            <div id="ws-dot-1" class="w-3 h-3 rounded-full bg-emerald-500 flex-shrink-0 mt-0.5"></div>
+                            <div id="ws-dot-1" class="w-3 h-3 rounded-full bg-slate-300 flex-shrink-0 mt-0.5"></div>
                             <div class="w-0.5 h-full bg-slate-200 my-0.5"></div>
                         </div>
-                        <div class="pb-4">
-                            <p class="text-[11px] font-bold text-[#1a233a]">Initial scoping call</p>
+                        <div class="pb-3">
+                            <p class="text-[11px] font-bold text-[#1a233a]">Workshop Scheduled</p>
                             <p id="ws-step1-info" class="text-[10px] text-slate-400 mt-0.5">Not started</p>
                         </div>
                     </div>
-                    <!-- Step 2: Technical Workshop -->
+                    <!-- Step 2: RGT Shared -->
                     <div class="flex gap-3">
                         <div class="flex flex-col items-center">
-                            <div id="ws-dot-2" class="w-3 h-3 rounded-full bg-indigo-500 flex-shrink-0 mt-0.5"></div>
+                            <div id="ws-dot-2" class="w-3 h-3 rounded-full bg-slate-300 flex-shrink-0 mt-0.5"></div>
                             <div class="w-0.5 h-full bg-slate-200 my-0.5"></div>
                         </div>
-                        <div class="pb-4">
-                            <p class="text-[11px] font-bold text-[#1a233a]">Technical IDR workshop</p>
-                            <p id="ws-step2-info" class="text-[10px] text-slate-400 mt-0.5">Pending</p>
+                        <div class="pb-3">
+                            <p class="text-[11px] font-bold text-[#1a233a]">RGT Shared</p>
+                            <p id="ws-step2-info" class="text-[10px] text-slate-400 mt-0.5">Not started</p>
                         </div>
                     </div>
-                    <!-- Step 3: Blueprint Review -->
+                    <!-- Step 3: Discussion Completed -->
                     <div class="flex gap-3">
                         <div class="flex flex-col items-center">
                             <div id="ws-dot-3" class="w-3 h-3 rounded-full bg-slate-300 flex-shrink-0 mt-0.5"></div>
+                            <div class="w-0.5 h-full bg-slate-200 my-0.5"></div>
                         </div>
-                        <div>
-                            <p class="text-[11px] font-bold text-[#1a233a]">Blueprint review & signoff</p>
+                        <div class="pb-3">
+                            <p class="text-[11px] font-bold text-[#1a233a]">Discussion Completed</p>
                             <p id="ws-step3-info" class="text-[10px] text-slate-400 mt-0.5">Not started</p>
                         </div>
                     </div>
+                    <!-- Step 4: Document Review -->
+                    <div class="flex gap-3">
+                        <div class="flex flex-col items-center">
+                            <div id="ws-dot-4" class="w-3 h-3 rounded-full bg-slate-300 flex-shrink-0 mt-0.5"></div>
+                            <div class="w-0.5 h-full bg-slate-200 my-0.5"></div>
+                        </div>
+                        <div class="pb-3">
+                            <p class="text-[11px] font-bold text-[#1a233a]">Document Review</p>
+                            <p id="ws-step4-info" class="text-[10px] text-slate-400 mt-0.5">Not started</p>
+                        </div>
+                    </div>
+                    <!-- Step 5: Completed -->
+                    <div class="flex gap-3">
+                        <div class="flex flex-col items-center">
+                            <div id="ws-dot-5" class="w-3 h-3 rounded-full bg-slate-300 flex-shrink-0 mt-0.5"></div>
+                        </div>
+                        <div>
+                            <p class="text-[11px] font-bold text-[#1a233a]">Completed</p>
+                            <p id="ws-step5-info" class="text-[10px] text-slate-400 mt-0.5">Not started</p>
+                        </div>
+                    </div>
                 </div>
-
+                <div class="bg-white rounded-lg border border-slate-200 p-4">
+                <h3 class="text-[10px] font-bold text-[#1a233a] uppercase tracking-wider mb-3 pb-2 border-b border-slate-100">Status & Ownership</h3>
+                <div class="space-y-3">
+                    <div>
+                        <p class="text-[9px] font-bold text-slate-400 uppercase">Current Status</p>
+                        <select id="fd-tech-status" disabled class="mt-1 w-full text-[11px] p-1.5 rounded border border-slate-200 disabled:appearance-none disabled:border-transparent disabled:bg-transparent disabled:p-0 disabled:font-bold disabled:text-indigo-700">
+                            <option value="Pending Workshop">Pending Workshop</option>
+                            <option value="Scheduled">Scheduled</option>
+                            <option value="In Progress">In Progress</option>
+                            <option value="Pending Document">Pending Document</option>
+                            <option value="Document Review">Document Review</option>
+                            <option value="Completed">Completed</option>
+                            <option value="Delayed">Delayed</option>
+                            <option value="Rescheduled">Rescheduled</option>
+                        </select>
+                    </div>
+                    <div>
+                        <p class="text-[9px] font-bold text-slate-400 uppercase">Pending With</p>
+                        <input type="text" id="fd-pending-with" disabled class="mt-1 w-full text-[11px] p-1.5 rounded border border-slate-200 disabled:border-transparent disabled:bg-transparent disabled:p-0 disabled:font-medium disabled:text-slate-800" placeholder="Name or team">
+                    </div>
+                </div>
+            </div>
                 <!-- Workshop Date & Attendees -->
                 <div class="grid grid-cols-2 gap-2 pt-3 border-t border-slate-100">
                     <div>
@@ -162,9 +205,9 @@
                     <p class="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Target System</p>
                     <p id="fd-strip-target" class="text-sm font-bold text-[#1a233a] mt-0.5">—</p>
                 </div>
-                <div class="flex-1 px-5 py-3">
-                    <p class="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Status</p>
-                    <p id="fd-strip-status" class="text-sm font-bold text-indigo-600 mt-0.5">—</p>
+                                <div class="flex-1 px-5 py-3">
+                    <p class="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Integration Type</p>
+                    <p id="fd-strip-integration" class="text-sm font-bold text-[#1a233a] mt-0.5">—</p>
                 </div>
             </div>
 
@@ -178,7 +221,9 @@
                     <button onclick="switchTab('payload')" id="tab-payload" class="tab-btn pill-inactive text-[11px] font-bold px-4 py-2 rounded-full transition-all">Payload</button>
                     <button onclick="switchTab('errors')" id="tab-errors" class="tab-btn pill-inactive text-[11px] font-bold px-4 py-2 rounded-full transition-all">Error Handling</button>
                     <button onclick="switchTab('docs')" id="tab-docs" class="tab-btn pill-inactive text-[11px] font-bold px-4 py-2 rounded-full transition-all">Documentation</button>
-                    <button onclick="switchTab('tracking')" id="tab-tracking" class="tab-btn pill-inactive text-[11px] font-bold px-4 py-2 rounded-full transition-all">Tracking</button>
+                    <button onclick="switchTab('followups')" id="tab-followups" class="tab-btn pill-inactive text-[11px] font-bold px-4 py-2 rounded-full transition-all">Follow-Ups</button>
+                    <button onclick="switchTab('mom')" id="tab-mom" class="tab-btn pill-inactive text-[11px] font-bold px-4 py-2 rounded-full transition-all">MoM</button>
+                    <button onclick="switchTab('attachments')" id="tab-attachments" class="tab-btn pill-inactive text-[11px] font-bold px-4 py-2 rounded-full transition-all">Attachments</button>
                 </div>
 
                                 <!-- Panel: Basic Info -->
@@ -262,21 +307,95 @@
                     </div>
                 </div>
 
-                <!-- Panel: Tracking -->
-                <div id="panel-tracking" class="tab-panel hidden">
+                                                        <!-- Panel: Follow-Ups -->
+                <div id="panel-followups" class="tab-panel hidden">
                     <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
-                        <h3 class="text-xs font-bold text-[#1a233a] uppercase tracking-wider mb-5">Notes & Audit History</h3>
-                        <div class="space-y-5">
-                            <div><label class="text-[10px] font-bold text-slate-400 uppercase mb-1.5 block">Discussion Summary</label><textarea id="fd-discussion" rows="3" disabled class="w-full text-sm p-2.5 rounded-lg border border-slate-200 disabled:border-transparent disabled:bg-transparent disabled:p-0 disabled:font-medium disabled:text-slate-800 disabled:resize-none transition-all"></textarea></div>
-                            <div><label class="text-[10px] font-bold text-amber-500 uppercase mb-1.5 block">Action Log History</label><textarea id="fd-pointers" rows="10" disabled class="w-full text-xs p-3 rounded-lg border border-amber-200 bg-amber-50 font-mono disabled:resize-none transition-all"></textarea></div>
+                        <div id="followups-container">
+                            <p class="text-sm text-slate-400 italic">Loading...</p>
                         </div>
                     </div>
                 </div>
+
+                <!-- Follow-Up Add Modal -->
+                <div id="fu-add-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+                    <div class="bg-white rounded-xl shadow-2xl w-[500px] p-6">
+                        <h3 class="text-sm font-bold text-[#1a233a] mb-4">Add Follow-Up</h3>
+                        <div class="space-y-3">
+                            <div><label class="text-[10px] font-bold text-slate-400 uppercase block mb-1">Description *</label><input type="text" id="fu-add-desc" class="w-full text-xs p-2 border border-slate-200 rounded-lg"></div>
+                            <div><label class="text-[10px] font-bold text-slate-400 uppercase block mb-1">Action</label><input type="text" id="fu-add-action" class="w-full text-xs p-2 border border-slate-200 rounded-lg"></div>
+                            <div><label class="text-[10px] font-bold text-slate-400 uppercase block mb-1">Owner</label><input type="text" id="fu-add-owner" class="w-full text-xs p-2 border border-slate-200 rounded-lg"></div>
+                            <div><label class="text-[10px] font-bold text-slate-400 uppercase block mb-1">Due Date</label><input type="date" id="fu-add-due" class="w-full text-xs p-2 border border-slate-200 rounded-lg"></div>
+                        </div>
+                        <div class="flex justify-end gap-2 mt-4">
+                            <button onclick="closeFuAddModal()" class="text-[11px] font-bold text-slate-500 px-4 py-2 rounded-lg border border-slate-200">Cancel</button>
+                            <button onclick="submitNewFollowup()" class="text-[11px] font-bold text-white bg-indigo-500 hover:bg-indigo-600 px-4 py-2 rounded-lg shadow">Create</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Follow-Up Close Modal -->
+                <div id="fu-close-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+                    <div class="bg-white rounded-xl shadow-2xl w-[400px] p-6">
+                        <h3 class="text-sm font-bold text-[#1a233a] mb-3">Close Follow-Up</h3>
+                        <textarea id="fu-close-note" rows="2" class="w-full text-xs p-2 border border-slate-200 rounded-lg" placeholder="Optional: closing note..."></textarea>
+                        <div class="flex justify-end gap-2 mt-3">
+                            <button onclick="closeFuCloseModal()" class="text-[11px] font-bold text-slate-500 px-4 py-2 rounded-lg border border-slate-200">Cancel</button>
+                            <button onclick="confirmCloseFollowup()" class="text-[11px] font-bold text-white bg-emerald-500 hover:bg-emerald-600 px-4 py-2 rounded-lg shadow">Confirm Close</button>
+                        </div>
+                    </div>
+                </div>    
+
+                                <!-- Panel: MoM -->
+                <div id="panel-mom" class="tab-panel hidden">
+                    <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+                        <div id="mom-tab-content">
+                            <p class="text-sm text-slate-400 italic">Loading sessions...</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- MoM Preview Modal -->
+                <div id="mom-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+                    <div class="bg-white rounded-xl shadow-2xl w-[700px] max-h-[80vh] flex flex-col">
+                        <div class="flex items-center justify-between p-4 border-b border-slate-200">
+                            <h3 class="text-sm font-bold text-[#1a233a]">MoM Preview</h3>
+                            <button onclick="closeMomModal()" class="text-slate-400 hover:text-slate-600"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
+                        </div>
+                        <div id="mom-modal-content" class="flex-grow overflow-y-auto p-6 text-sm"></div>
+                        <div class="p-4 border-t border-slate-200 space-y-2">
+                            <div id="mom-recipients-row" class="hidden">
+                                <input type="text" id="mom-override-recipients" class="w-full text-xs p-2 rounded border border-slate-200" placeholder="Override recipients (comma-separated emails)">
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <button onclick="document.getElementById('mom-recipients-row').classList.toggle('hidden')" class="text-[10px] text-slate-400 hover:text-slate-600 underline">Edit Recipients</button>
+                                <div class="flex gap-2">
+                                    <button onclick="closeMomModal()" class="text-[11px] font-bold text-slate-500 hover:text-slate-700 px-4 py-2 rounded-lg border border-slate-200">Cancel</button>
+                                    <button onclick="sendMom()" id="btn-send-mom" class="text-[11px] font-bold text-white bg-emerald-500 hover:bg-emerald-600 px-4 py-2 rounded-lg shadow">Send to Stakeholders</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Panel: Attachments -->
+                <div id="panel-attachments" class="tab-panel hidden">
+                    <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-xs font-bold text-[#1a233a] uppercase tracking-wider">Received Documents</h3>
+                            <span id="fd-doc-count" class="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-medium">0 files</span>
+                        </div>
+                        <div id="fd-documents-list" class="space-y-2">
+                            <p class="text-sm text-slate-400 italic">No documents received yet.</p>
+                        </div>
+                    </div>
+                </div>    
             </div>
         </div>
 
     </div>
 
-    <script src="/js/details.js?v=12"></script>
+        <script src="/js/details.js?v=12"></script>
+    <script src="/js/mom.js?v=1"></script>
+    <script src="/js/followups.js?v=1"></script>
 </body>
 </html>

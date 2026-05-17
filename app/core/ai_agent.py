@@ -138,7 +138,7 @@ def generate_project_mom(project_data: str) -> str:
         return "<p>Error generating MOM. Please review the dashboard manually.</p>"
 
 
-def generate_wud_content(api_name: str, module_name: str, crm_location: str, business_flow: str, input_req: str, output_res: str) -> dict:
+def generate_wud_content(api_name: str, module_name: str, crm_location: str, business_flow: str, input_req: str, output_res: str, integration_type: str = "api") -> dict:
     """Generates formal Introduction, Macro Logic, and Expected Output for the WUD."""
     
     # Fallback if Bedrock is offline
@@ -180,7 +180,7 @@ def generate_wud_content(api_name: str, module_name: str, crm_location: str, bus
 
     try:
         response_text = _invoke_bedrock(system_prompt, user_prompt, temperature=0.2)
-        
+
         # Strip accidental markdown formatting the LLM might have added
         clean_json = re.sub(r'```json|```', '', response_text).strip()
         return json.loads(clean_json)
@@ -192,3 +192,90 @@ def generate_wud_content(api_name: str, module_name: str, crm_location: str, bus
             "macro_logic": "• Error: Could not generate logic.\n• Please check API.",
             "expected_output": "• Error: Could not generate output.\n• Please check API."
         }
+
+
+def generate_touchpoint_mom(
+    touchpoint_name: str,
+    module: str,
+    action_items: list,
+    discussions: list,
+    open_pointers: str = None,
+) -> str:
+    """Returns HTML body for a touchpoint-level MoM email."""
+
+    # Build fallback HTML (used when Bedrock is offline or fails)
+    fallback_rows = ""
+    for item in action_items:
+        fallback_rows += (
+            f"<tr><td style='border:1px solid #e2e8f0;padding:8px;'>{item.get('description','')}</td>"
+            f"<td style='border:1px solid #e2e8f0;padding:8px;'>{item.get('action_point','')}</td>"
+            f"<td style='border:1px solid #e2e8f0;padding:8px;'>{item.get('owner','')}</td>"
+            f"<td style='border:1px solid #e2e8f0;padding:8px;'>{item.get('expected_date','')}</td></tr>"
+        )
+
+    disc_html = ""
+    for d in discussions:
+        disc_html += f"<li>{d.get('content','')} <em>({d.get('created_at','')})</em></li>"
+
+    fallback_html = (
+        f"<h3>Meeting Context</h3>"
+        f"<p><strong>Touchpoint:</strong> {touchpoint_name}<br><strong>Module:</strong> {module}</p>"
+        f"<h3>Discussion Summary</h3>"
+        f"<ul>{disc_html if disc_html else '<li>No discussions recorded.</li>'}</ul>"
+        f"<h3>Action Items</h3>"
+        f"<table style='border-collapse:collapse;width:100%;font-size:13px;'>"
+        f"<thead><tr style='background:#f1f5f9;'>"
+        f"<th style='border:1px solid #e2e8f0;padding:8px;text-align:left;'>Description</th>"
+        f"<th style='border:1px solid #e2e8f0;padding:8px;text-align:left;'>Action Point</th>"
+        f"<th style='border:1px solid #e2e8f0;padding:8px;text-align:left;'>Owner</th>"
+        f"<th style='border:1px solid #e2e8f0;padding:8px;text-align:left;'>Expected Date</th>"
+        f"</tr></thead><tbody>"
+        f"{fallback_rows if fallback_rows else '<tr><td colspan=4 style=border:1px solid #e2e8f0;padding:8px;>No action items.</td></tr>'}"
+        f"</tbody></table>"
+    )
+
+    if open_pointers:
+        fallback_html += f"<h3>Open Pointers</h3><p>{open_pointers}</p>"
+
+    if not bedrock_client:
+        return fallback_html
+
+    # Build AI prompt
+    actions_text = ""
+    for i, item in enumerate(action_items, 1):
+        actions_text += (
+            f"{i}. Description: {item.get('description','')} | "
+            f"Action: {item.get('action_point','')} | "
+            f"Owner: {item.get('owner','')} | "
+            f"Due: {item.get('expected_date','')}\n"
+        )
+
+    discussions_text = ""
+    for d in discussions:
+        discussions_text += f"- [{d.get('created_at','')}] {d.get('content','')}\n"
+
+    system_prompt = (
+        "You are an expert IT Project Management Officer (PMO) for an enterprise CRM integration project. "
+        "Generate a formal, professional Minutes of Meeting (MoM) for a single integration touchpoint. "
+        "Format your output strictly using HTML tags. Include these sections: "
+        "1. <h3>Meeting Context</h3> - Touchpoint name, module, and brief context. "
+        "2. <h3>Discussion Summary</h3> - Synthesize the discussions into 2-4 concise bullet points. "
+        "3. <h3>Action Items</h3> - An HTML table with columns: Description, Action Point, Owner, Expected Date. "
+        "4. <h3>Open Pointers</h3> - Only include if open pointers are provided. "
+        "Rules: Tone is formal, objective, C-Suite ready. Do NOT invent data. Only use what is provided. "
+        "Output ONLY the HTML content. No markdown fences, no outer html/body tags. Keep it concise but complete."
+    )
+
+    user_prompt = (
+        f"Touchpoint: {touchpoint_name}\n"
+        f"Module: {module}\n\n"
+        f"Discussions:\n{discussions_text if discussions_text else 'None recorded.'}\n\n"
+                f"Action Items:\n{actions_text if actions_text else 'None recorded.'}\n\n"
+        f"Open Pointers: {open_pointers or 'None.'}"
+    )
+
+    try:
+        return _invoke_bedrock(system_prompt, user_prompt, temperature=0.3)
+    except Exception as e:
+        print(f"Touchpoint MoM Generation Failed via Bedrock: {e}")
+        return fallback_html

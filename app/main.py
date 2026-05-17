@@ -2,17 +2,18 @@ import os
 from fastapi import FastAPI, BackgroundTasks, Request, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse,StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
+from io import BytesIO
 from apscheduler.schedulers.background import BackgroundScheduler
 from contextlib import asynccontextmanager
 from app.core.database import engine, Base, SessionLocal, get_db
 from app.models.domain import TeamMaster, DepartmentMaster
 from app.services.identity_validator import enrich_owner_label
 from app.core.mom_engine import generate_and_send_mom
-from app.models.domain import IntegrationTouchpoint, IDRFunctional, IDRTechnical, IDRActionLog
+from app.models.domain import IntegrationTouchpoint, IDRFunctional, IDRTechnical, IDRActionLog, TechnicalDocument
 # Import our new architecture
-from app.api.routes import upload, projects, tasks,integrations
-from app.core.email_engine import generate_and_send_daily_summary, generate_and_send_follow_ups
+from app.api.routes import upload, projects, tasks, integrations, mom, followups
+from app.core.email_engine import generate_and_send_daily_summary, generate_and_send_follow_ups, send_followup_nudges
 import mimetypes
 from datetime import date, datetime
 from app.workshop_mailer import send_workshop_invites
@@ -35,8 +36,11 @@ async def lifespan(app: FastAPI):
     # Runs daily at 6:00 PM (18:00) for executives
     scheduler.add_job(generate_and_send_daily_summary, 'cron', hour=18, minute=0) 
     
-    # NEW: Runs at 9:00 AM, Monday-Friday for the Bank teams
+        # NEW: Runs at 9:00 AM, Monday-Friday for the Bank teams
     scheduler.add_job(generate_and_send_follow_ups, 'cron', day_of_week='mon-fri', hour=9, minute=0) 
+    
+    # Follow-up nudges at 9:30 AM Mon-Fri
+    scheduler.add_job(send_followup_nudges, 'cron', day_of_week='mon-fri', hour=9, minute=30) 
     
     scheduler.start()
     print("✅ Background Scheduler Started. Summaries at 6PM, Follow-ups at 9AM (Mon-Fri).")
@@ -62,6 +66,8 @@ app.include_router(upload.router)
 app.include_router(projects.router) 
 app.include_router(tasks.router)
 app.include_router(integrations.router)
+app.include_router(mom.router)
+app.include_router(followups.router)
 
 # --- NEW: MANUAL TEST ROUTE ---
 @app.get("/test-daily-email")
@@ -75,6 +81,13 @@ def test_email_follow_ups():
     """Trigger this from the browser to instantly test the follow-up engine."""
     generate_and_send_follow_ups()
     return {"message": "Follow-up trigger fired. Check terminal for success/failure logs."}
+
+@app.get("/test-followup-nudges")
+def test_followup_nudges():
+    """Trigger this from the browser to test the follow-up nudge engine."""
+    send_followup_nudges()
+    return {"message": "Follow-up nudge trigger fired. Check terminal for logs."}
+
 @app.post("/api/generate-mom")
 async def trigger_mom_generation(background_tasks: BackgroundTasks):
     """
@@ -145,12 +158,15 @@ def get_phase2_dashboard(request: Request):
             # --- INTELLIGENT STATUS CALCULATION (datetime-aware) ---
             tech_status = tech.tech_status if tech and tech.tech_status else "Auto"
 
-            if tech and tech.start_date and tech.end_date and tech_status not in ["Completed", "Rescheduled"]:
+                        # Preserve manually set statuses
+            manual_statuses = ["Completed", "Rescheduled", "Pending Document", "Document Review"]
+            
+            if tech_status in manual_statuses:
+                pass  # Keep as-is
+            elif tech and tech.start_date and tech.end_date:
                 now = datetime.now()
-                # tech.start_date / end_date are datetime objects from the DB.
-                # Coerce defensively in case they come back as strings.
                 start_dt = tech.start_date if isinstance(tech.start_date, datetime) else datetime.fromisoformat(str(tech.start_date))
-                end_dt   = tech.end_date   if isinstance(tech.end_date, datetime)   else datetime.fromisoformat(str(tech.end_date))
+                end_dt = tech.end_date if isinstance(tech.end_date, datetime) else datetime.fromisoformat(str(tech.end_date))
 
                 if now > end_dt:
                     tech_status = "Delayed"
@@ -158,11 +174,11 @@ def get_phase2_dashboard(request: Request):
                     tech_status = "Scheduled"
                 else:
                     tech_status = "In Progress"
-            elif tech_status not in ["Completed", "Rescheduled"]:
+            else:
                 tech_status = "Pending Workshop"
 
-            # --- DYNAMIC COLOR MAPPING ---
-            status_class = "bg-amber-100 text-amber-700 border-amber-200" # Pending Workshop
+                        # --- DYNAMIC COLOR MAPPING ---
+            status_class = "bg-amber-100 text-amber-700 border-amber-200"  # Pending Workshop
             if tech_status == "In Progress":
                 status_class = "bg-blue-100 text-blue-700 border-blue-200"
             elif tech_status == "Scheduled":
@@ -173,6 +189,10 @@ def get_phase2_dashboard(request: Request):
                 status_class = "bg-emerald-100 text-emerald-700 border-emerald-200"
             elif tech_status == "Rescheduled":
                 status_class = "bg-purple-100 text-purple-700 border-purple-200"
+            elif tech_status == "Pending Document":
+                status_class = "bg-orange-100 text-orange-700 border-orange-200"
+            elif tech_status == "Document Review":
+                status_class = "bg-indigo-100 text-indigo-700 border-indigo-200"
 
             # Serialize datetimes as 'YYYY-MM-DD HH:MM' for the frontend.
             # The space (not 'T') keeps it human-readable; FE splits on it.
@@ -225,28 +245,69 @@ async def update_tech_idr(touchpoint_id: int, request: Request):
         clean_start = parse_dt(data.get("start"))
         clean_end = parse_dt(data.get("end"))
         
-        # If user explicitly selected Completed/Rescheduled, save it. Otherwise revert to Auto.
+                        # Accept manual status overrides for workflow-controlled statuses
         incoming_status = data.get("status", "Auto")
-        new_status = incoming_status if incoming_status in ["Completed", "Rescheduled"] else "Auto"
-        
+        allowed_manual = ["Completed", "Rescheduled", "Pending Document", "Document Review", "Pending Workshop"]
+        new_status = incoming_status if incoming_status in allowed_manual else "Auto"
+
         if tech:
             tech.integration_type = data.get("integration")
             tech.start_date = clean_start
             tech.end_date = clean_end
             tech.tech_status = new_status
             if "technical_details" in data:
-                tech.technical_details = data.get("technical_details")
+                td = data.get("technical_details")
+
+                # Log discussion entry if provided
+                new_discussion = td.pop("discussion", "").strip() if td else ""
+                if new_discussion:
+                    db.add(IDRActionLog(
+                        touchpoint_id=touchpoint_id,
+                        action_type="DISCUSSION",
+                        action_by="User",
+                        comment=new_discussion
+                    ))
+
+                # Log pointer/action entry if provided
+                new_pointer = td.pop("pointers", "").strip() if td else ""
+                if new_pointer:
+                    db.add(IDRActionLog(
+                        touchpoint_id=touchpoint_id,
+                        action_type="POINTER",
+                        action_by="User",
+                        open_pointer_history=new_pointer
+                    ))
+
+                tech.technical_details = td
         else:
+            td = data.get("technical_details", {})
+            new_discussion = td.pop("discussion", "").strip() if td else ""
+            new_pointer = td.pop("pointers", "").strip() if td else ""
+
             tech = IDRTechnical(
                 touchpoint_id=touchpoint_id,
                 integration_type=data.get("integration"),
                 start_date=clean_start,
                 end_date=clean_end,
                 tech_status=new_status,
-                technical_details=data.get("technical_details", {})
+                technical_details=td
             )
             db.add(tech)
 
+            if new_discussion:
+                db.add(IDRActionLog(
+                    touchpoint_id=touchpoint_id,
+                    action_type="DISCUSSION",
+                    action_by="User",
+                    comment=new_discussion
+                ))
+            if new_pointer:
+                db.add(IDRActionLog(
+                    touchpoint_id=touchpoint_id,
+                    action_type="POINTER",
+                    action_by="User",
+                    open_pointer_history=new_pointer
+                ))
         db.commit()
         return {"status": "success", "message": "Technical details updated"}
     except Exception as e:
@@ -293,13 +354,28 @@ def get_single_touchpoint(tp_id: int):
         tech_status = tech.tech_status if tech and tech.tech_status else "Auto"
         integration_type = tech.integration_type if tech and tech.integration_type else "unassigned"
 
-        history_logs = db.query(IDRActionLog).filter(IDRActionLog.touchpoint_id == tp_id).order_by(IDRActionLog.created_at.desc()).all()
-        
+                # Latest 5 discussion entries
+        discussion_logs = db.query(IDRActionLog).filter(
+            IDRActionLog.touchpoint_id == tp_id,
+            IDRActionLog.action_type == "DISCUSSION"
+        ).order_by(IDRActionLog.created_at.desc()).limit(5).all()
+
+        # Latest 5 pointer/action entries
+        pointer_logs = db.query(IDRActionLog).filter(
+            IDRActionLog.touchpoint_id == tp_id,
+            IDRActionLog.action_type.in_(["POINTER", "STATUS_CHANGE"])
+        ).order_by(IDRActionLog.created_at.desc()).limit(5).all()
+
+        formatted_discussions = ""
+        for log in discussion_logs:
+            date_str = log.created_at.strftime("%b %d, %Y %H:%M") if log.created_at else "Unknown"
+            formatted_discussions += f"[{date_str}] {log.comment}\n\n"
+
         formatted_history = ""
-        for log in history_logs:
-            if log.open_pointer_history:
-                date_str = log.created_at.strftime("%b %d, %Y") if log.created_at else "Unknown Date"
-                formatted_history += f"[{date_str}] {log.open_pointer_history}\n\n"
+        for log in pointer_logs:
+            date_str = log.created_at.strftime("%b %d, %Y %H:%M") if log.created_at else "Unknown"
+            entry = log.open_pointer_history or log.comment or ""
+            formatted_history += f"[{date_str}] {entry}\n\n"
 
         raw_signoff = getattr(func, "idr_signoff_date", None)
         formatted_signoff = str(raw_signoff) if raw_signoff else "Pending"
@@ -333,6 +409,8 @@ def get_single_touchpoint(tp_id: int):
                 "end":   tech.end_date.strftime("%Y-%m-%d %H:%M")   if (tech and tech.end_date)   else "",
                 "techStatus": tech_status,
                 "techDetails": tech.technical_details if tech and tech.technical_details else {},
+                "pendingWith": (tech.pending_with if tech else "") or "",
+                "discussion_log": formatted_discussions.strip(),
                 "history_log": formatted_history.strip()
             }
         }
@@ -351,18 +429,69 @@ def generate_wud_word_endpoint(tp_id: int):
     if tp_data.get("integration", "").lower() != "api":
         raise HTTPException(status_code=400, detail="WUD Generation is currently only supported for API Integration Types.")
 
+        try:
+            # Call the new Word generator
+            word_file = create_wud_word(tp_data)
+            safe_name = tp_data.get("name", "Touchpoint").replace(" ", "_")
+
+            # Stream the file with the exact MIME type for .docx
+            return StreamingResponse(
+                word_file,
+                media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                headers={"Content-Disposition": f"attachment; filename={safe_name}_WUD.docx"}
+            )
+        except Exception as e:
+            print(f"Backend Word Generation Error: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/phase2/touchpoint/{tp_id}/documents")
+def get_touchpoint_documents(tp_id: int):
+    """Returns list of documents received for a touchpoint."""
+    db = SessionLocal()
     try:
-        # Call the new Word generator
-        word_file = create_wud_word(tp_data)
-        safe_name = tp_data.get("name", "Touchpoint").replace(" ", "_")
-        
-        # Stream the file with the exact MIME type for .docx
+        docs = db.query(TechnicalDocument).filter(
+            TechnicalDocument.touchpoint_id == tp_id
+        ).order_by(TechnicalDocument.received_at.desc()).all()
+
+        return {
+            "status": "success",
+            "documents": [
+                {
+                    "id": d.id,
+                    "filename": d.filename,
+                    "file_type": d.file_type,
+                    "received_from": d.received_from or "",
+
+                    "received_at": d.received_at.strftime("%b %d, %Y at %I:%M %p") if d.received_at else "",
+                    "notes": d.notes or ""
+                }
+                for d in docs
+            ]
+        }
+    finally:
+        db.close()
+
+
+@app.get("/api/phase2/document/{doc_id}/download")
+def download_document(doc_id: int):
+    """Downloads a stored document by ID."""
+    import base64
+    db = SessionLocal()
+    try:
+        doc = db.query(TechnicalDocument).filter(TechnicalDocument.id == doc_id).first()
+        if not doc:
+            raise HTTPException(status_code=404, detail="Document not found")
+
+        file_bytes = base64.b64decode(doc.file_data)
+        buffer = BytesIO(file_bytes)
+        buffer.seek(0)
+
+        mime = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         return StreamingResponse(
-            word_file, 
-            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document", 
-            headers={"Content-Disposition": f"attachment; filename={safe_name}_WUD.docx"} # <-- Changed to .docx
+            buffer,
+            media_type=mime,
+            headers={"Content-Disposition": f"attachment; filename={doc.filename}"}
         )
-        
-    except Exception as e:
-        print(f"Backend Word Generation Error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        db.close()

@@ -91,10 +91,127 @@ def generate_and_send_mom():
             server.starttls()
             server.login(SMTP_USERNAME, SMTP_PASSWORD)
             server.sendmail(SMTP_USERNAME, MOM_RECIPIENTS, msg.as_string())
-            
+
         print(f"[{datetime.now()}] ✅ Automated MOM sent successfully to stakeholders.")
 
     except Exception as e:
         print(f"[{datetime.now()}] ❌ Failed to generate MOM: {e}")
+    finally:
+        db.close()
+
+
+def send_touchpoint_mom(touchpoint_id: int, html_body: str, override_recipients: list = None, write_action_log: bool = True) -> dict:
+    """Sends a touchpoint-level MoM email to derived or overridden recipients.
+
+    Args:
+        write_action_log: If True (default), inserts IDRActionLog and commits.
+            Set to False when the caller manages its own transaction (atomicity).
+    """
+    from app.models.domain import IntegrationTouchpoint, IDRFunctional, IDRTechnical, IDRActionLog
+    from app.services.identity_validator import resolve_member_email_and_cc
+
+    db = SessionLocal()
+    try:
+        tp = db.query(IntegrationTouchpoint).filter(
+            IntegrationTouchpoint.id == touchpoint_id
+        ).first()
+        if not tp:
+            return {"sent_to": [], "skipped": ["Touchpoint not found"], "success": False}
+
+        project_id = tp.project_id
+        func = db.query(IDRFunctional).filter(
+            IDRFunctional.touchpoint_id == touchpoint_id
+        ).first()
+        tech = db.query(IDRTechnical).filter(
+            IDRTechnical.touchpoint_id == touchpoint_id
+        ).first()
+
+        if override_recipients:
+            to_emails = [e.strip() for e in override_recipients if e.strip()]
+            cc_emails = []
+            skipped = []
+        else:
+            to_emails = []
+            cc_emails = []
+            skipped = []
+            names_to_resolve = []
+
+            if func:
+                if func.owner:
+                    names_to_resolve.append(func.owner)
+                if func.technical_owner:
+                    names_to_resolve.append(func.technical_owner)
+                if func.pending_with:
+                    names_to_resolve.append(func.pending_with)
+            if tech and tech.pending_with:
+                names_to_resolve.append(tech.pending_with)
+
+            for name in set(names_to_resolve):
+                to_email, cc_email, display = resolve_member_email_and_cc(
+                    db, name, project_id=project_id
+                )
+                if to_email:
+                    to_emails.append(to_email)
+                    if cc_email:
+                        cc_emails.append(cc_email)
+                else:
+                    skipped.append(name)
+
+            to_emails = list(set(to_emails))
+            cc_emails = list(set(cc_emails) - set(to_emails))
+
+        if not to_emails:
+            return {"sent_to": [], "skipped": skipped, "success": False}
+
+        today_str = datetime.now().strftime("%B %d, %Y")
+        tp_name = tp.name or "Integration Touchpoint"
+
+        final_html = (
+            "<html><body style='font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;"
+            "color:#1e293b;background:#f8fafc;padding:30px;'>"
+            "<div style='max-width:800px;margin:0 auto;background:white;border-radius:8px;"
+            "box-shadow:0 4px 6px rgba(0,0,0,0.05);overflow:hidden;border-top:5px solid #4338ca;'>"
+            f"<div style='padding:30px;background:#f1f5f9;border-bottom:1px solid #e2e8f0;'>"
+            f"<h2 style='margin:0;color:#0f172a;'>Minutes of Meeting</h2>"
+            f"<p style='margin:5px 0 0;color:#64748b;font-size:14px;'>"
+            f"{tp_name} &mdash; {today_str}</p></div>"
+            f"<div style='padding:40px;line-height:1.6;font-size:15px;'>{html_body}</div>"
+            "<div style='padding:20px;text-align:center;background:#f8fafc;"
+            "border-top:1px solid #e2e8f0;font-size:12px;color:#94a3b8;'>"
+            "Automated MoM via <strong>SDGNext Command Center</strong></div>"
+            "</div></body></html>"
+        )
+
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = f"MoM: {tp_name} [{today_str}]"
+        msg["From"] = SMTP_USERNAME
+        msg["To"] = ", ".join(to_emails)
+        if cc_emails:
+            msg["Cc"] = ", ".join(cc_emails)
+        msg.attach(MIMEText(final_html, "html"))
+
+        envelope = list(set(to_emails + cc_emails))
+        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+            server.starttls()
+            server.login(SMTP_USERNAME, SMTP_PASSWORD)
+            server.sendmail(SMTP_USERNAME, envelope, msg.as_string())
+
+        # Only write action log + commit if caller hasn't taken ownership
+        if write_action_log:
+            recipient_count = len(to_emails) + len(cc_emails)
+            db.add(IDRActionLog(
+                touchpoint_id=touchpoint_id,
+                action_type="MOM_SENT",
+                action_by="User",
+                comment=f"MoM emailed to {recipient_count} recipients"
+            ))
+            db.commit()
+
+        print(f"[{datetime.now()}] MoM sent for TP {touchpoint_id} to {to_emails}")
+        return {"sent_to": to_emails, "skipped": skipped, "success": True}
+
+    except Exception as e:
+        print(f"[{datetime.now()}] Failed to send touchpoint MoM: {e}")
+        return {"sent_to": [], "skipped": [str(e)], "success": False}
     finally:
         db.close()
