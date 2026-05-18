@@ -11,9 +11,9 @@ class Project(Base):
     __tablename__ = "projects"
     id = Column(Integer, primary_key=True, index=True)
     project_name = Column(String(50), unique=True, index=True)
+    created_at = Column(TIMESTAMP, server_default=func.now(), nullable=True)
 
     touchpoints = relationship("IntegrationTouchpoint", back_populates="project", cascade="all, delete-orphan")
-    # A project owns its departments (and through them, team members)
     departments = relationship("DepartmentMaster", back_populates="project", cascade="all, delete-orphan")
 
 

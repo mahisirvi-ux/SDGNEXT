@@ -5,16 +5,50 @@ document.addEventListener('DOMContentLoaded', async () => {
     const fileInput = document.getElementById('csvFileInput');
     const projectSelector = document.getElementById('projectSelector');
 
-    // Load the dropdowns
-    await populateProjectsDropdown(projectSelector);
+    // Parse project id from URL (/project?id=X)
+    const urlParams = new URLSearchParams(window.location.search);
+    const projectId = urlParams.get('id');
 
-    // Load data if a project is auto-selected
-    if (projectSelector.value) {
-        window.currentProjectName = projectSelector.value;
-        await loadData(projectSelector.value);
-    } else {
-        showEmptyState();
+    // If no id param, redirect to landing
+    if (!projectId) {
+        window.location.replace('/');
+        return;
     }
+
+    // Load projects and find the matching one
+    let projects = [];
+    try {
+        const response = await fetch('/projects');
+        if (!response.ok) throw new Error('Backend error');
+        projects = await response.json();
+    } catch (err) {
+        document.getElementById('tracker-table-body').innerHTML =
+            '<tr><td colspan="7" class="p-8 text-center text-red-400">Failed to load projects. <button onclick="location.reload()" class="underline text-indigo-500">Retry</button></td></tr>';
+        return;
+    }
+
+    const matchedProject = projects.find(p => p.id === parseInt(projectId));
+    console.log('[SDGNext] URL id:', projectId, '→ matched:', matchedProject?.project_name, '| projects:', projects.map(p => p.id + ':' + p.project_name));
+    if (!matchedProject) {
+        window.location.replace('/');
+        return;
+    }
+
+                // Populate dropdown and select matching project
+    projectSelector.innerHTML = '';
+    projects.forEach(p => {
+        const opt = document.createElement('option');
+        opt.value = p.project_name;
+        opt.dataset.id = p.id;
+        opt.innerText = p.project_name;
+        if (p.id === matchedProject.id) opt.selected = true;
+        projectSelector.appendChild(opt);
+    });
+    projectSelector.value = matchedProject.project_name;
+
+    window.currentProjectName = matchedProject.project_name;
+    await loadData(matchedProject.project_name);
+
     // Handle navigation from details page with phase preference
     const savedPhase = localStorage.getItem('activePhase');
     if (savedPhase) {
@@ -26,10 +60,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         }, 300);
     }
 
-    // Listeners
+        // Listeners
     projectSelector.addEventListener('change', (e) => {
     if (e.target.value) {
         window.currentProjectName = e.target.value;
+        // Update URL with new project id
+        const selectedOpt = e.target.selectedOptions[0];
+        const newId = selectedOpt.dataset.id;
+        history.pushState({}, '', `/project?id=${newId}`);
         if(typeof window.closeFlyout === 'function') window.closeFlyout();
         loadData(e.target.value);
         // If Phase 2 board is currently visible, refresh it for the new project

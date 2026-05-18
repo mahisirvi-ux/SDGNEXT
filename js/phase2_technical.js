@@ -484,9 +484,9 @@ async function saveTechDetails() {
 // ==========================================
 // AUTO-LOADER (Bypasses Navigation Conflicts)
 // ==========================================
-document.addEventListener("DOMContentLoaded", () => {
-    populateTechTable();
-});
+// Phase 2 auto-load is handled by app-dashboard.js switchPhase().
+// Only load when explicitly triggered via nav button.
+// ==========================================
 
 const phase2Btn = document.getElementById('nav-2');
 if (phase2Btn) {

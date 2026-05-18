@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SDGNext | Command Center</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f4f7f9; }
+    </style>
+</head>
+<body class="min-h-screen">
+
+    <!-- Top Bar -->
+    <header class="bg-[#1a233a] text-white">
+        <div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <h1 class="text-lg font-bold tracking-tight">SDG<span class="text-pink-400">NEXT</span></h1>
+                <span class="text-[10px] uppercase tracking-widest text-slate-400 hidden sm:inline">Command Center</span>
+            </div>
+            <button onclick="openNewProjectModal()" class="text-[11px] font-bold bg-indigo-500 hover:bg-indigo-600 text-white px-4 py-2 rounded-lg shadow transition-all">
+                + New Project
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="max-w-7xl mx-auto px-6 py-8">
+
+        <!-- KPI Row 1: Operational (Cross-Project) -->
+        <section id="kpi-operational" class="mb-6">
+            <h2 class="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-3">Operational Overview</h2>
+            <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
+                <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4 cursor-default">
+                    <p id="kpi-open-fus" class="text-3xl font-bold text-slate-800">—</p>
+                    <p class="text-[10px] uppercase tracking-wider text-slate-500 mt-1">Open Follow-Ups</p>
+                </div>
+                <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4 cursor-default">
+                    <p id="kpi-overdue" class="text-3xl font-bold text-red-600">—</p>
+                    <p class="text-[10px] uppercase tracking-wider text-slate-500 mt-1">Overdue</p>
+                </div>
+                <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4 cursor-default">
+                    <p id="kpi-due-week" class="text-3xl font-bold text-slate-800">—</p>
+                    <p class="text-[10px] uppercase tracking-wider text-slate-500 mt-1">Due This Week</p>
+                </div>
+                <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4 cursor-default">
+                    <p id="kpi-closed-7d" class="text-3xl font-bold text-emerald-600">—</p>
+                    <p class="text-[10px] uppercase tracking-wider text-slate-500 mt-1">Closed (7 Days)</p>
+                </div>
+                <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4 cursor-default">
+                    <p id="kpi-mom-drafts" class="text-3xl font-bold text-amber-600">—</p>
+                    <p class="text-[10px] uppercase tracking-wider text-slate-500 mt-1">MoM Drafts</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- KPI Row 2: Administrative (Projects) -->
+        <section id="kpi-admin" class="mb-8">
+            <h2 class="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-3">Projects Overview</h2>
+            <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
+                <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4 cursor-default">
+                    <p id="kpi-total-projects" class="text-3xl font-bold text-slate-800">—</p>
+                    <p class="text-[10px] uppercase tracking-wider text-slate-500 mt-1">Total Projects</p>
+                </div>
+                <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4 cursor-default">
+                    <p id="kpi-added-month" class="text-3xl font-bold text-emerald-600">—</p>
+                    <p class="text-[10px] uppercase tracking-wider text-slate-500 mt-1">Added This Month</p>
+                </div>
+                <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4 cursor-default">
+                    <p id="kpi-touchpoints" class="text-3xl font-bold text-slate-800">—</p>
+                    <p class="text-[10px] uppercase tracking-wider text-slate-500 mt-1">Touchpoints</p>
+                </div>
+                <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4 cursor-default">
+                    <p id="kpi-phase1-done" class="text-3xl font-bold text-slate-800">—</p>
+                    <p class="text-[10px] uppercase tracking-wider text-slate-500 mt-1">Phase 1 Done</p>
+                </div>
+                <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4 cursor-default">
+                    <p id="kpi-phase2-done" class="text-3xl font-bold text-slate-800">—</p>
+                    <p class="text-[10px] uppercase tracking-wider text-slate-500 mt-1">Phase 2 Done</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Project List -->
+        <section id="project-list-section">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-sm font-bold text-[#1a233a]">Your Projects</h2>
+            </div>
+            <!-- Search -->
+            <div class="relative mb-4">
+                <input type="text" id="project-search" oninput="applySearch(this.value)" placeholder="Search projects..." class="w-full text-sm p-3 pl-10 rounded-xl border border-slate-200 bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-200 transition-all">
+                <svg class="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                <button id="search-clear" onclick="clearSearch()" class="hidden absolute right-3 top-3 text-slate-400 hover:text-slate-600"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
+            </div>
+            <!-- Cards -->
+            <div id="project-cards" class="space-y-3">
+                <p class="text-sm text-slate-400 italic p-4">Loading projects...</p>
+            </div>
+        </section>
+
+        <!-- Empty state (no projects at all) -->
+        <section id="empty-state" class="hidden">
+            <div class="text-center py-20">
+                <h2 class="text-xl font-bold text-[#1a233a] mb-2">Welcome to SDGNext</h2>
+                <p class="text-sm text-slate-400 mb-6">Get started by creating your first project.</p>
+                <button onclick="openNewProjectModal()" class="text-sm font-bold bg-indigo-500 hover:bg-indigo-600 text-white px-6 py-3 rounded-lg shadow transition-all">
+                    + New Project
+                </button>
+            </div>
+        </section>
+    </main>
+
+    <!-- New Project Modal -->
+    <div id="new-project-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+        <div class="bg-white rounded-xl shadow-2xl w-[420px] p-6">
+            <h3 class="text-sm font-bold text-[#1a233a] mb-4">Create New Project</h3>
+            <input type="text" id="new-project-name" class="w-full text-sm p-3 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-200" placeholder="Project name" autofocus>
+            <p id="new-project-error" class="text-xs text-red-500 mt-1 hidden"></p>
+            <div class="flex justify-end gap-2 mt-4">
+                <button onclick="closeNewProjectModal()" class="text-[11px] font-bold text-slate-500 px-4 py-2 rounded-lg border border-slate-200">Cancel</button>
+                <button onclick="submitNewProject()" class="text-[11px] font-bold text-white bg-indigo-500 hover:bg-indigo-600 px-4 py-2 rounded-lg shadow">Create</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/js/landing.js?v=1"></script>
+</body>
+</html>

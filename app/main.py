@@ -110,7 +110,11 @@ if os.path.exists("js"):
     app.mount("/js", StaticFiles(directory="js"), name="js")
 
 @app.get("/")
-async def read_index():
+async def read_landing():
+    return FileResponse('landing.html')
+
+@app.get("/project")
+async def read_project_view():
     return FileResponse('index.html')
 
 @app.get("/api/phase2/dashboard")
