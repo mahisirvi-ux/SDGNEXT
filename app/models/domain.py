@@ -276,3 +276,41 @@ class MockService(Base):
             name='uq_mock_method_httpmethod'
         ),
     )
+
+
+# ============================================================
+# DAILY METRIC SNAPSHOTS (Landing Page Sparklines)
+# ============================================================
+
+class DailyMetricSnapshot(Base):
+    """Daily aggregated metrics per project, captured nightly.
+    Used to draw sparklines on the analytical landing page.
+    One row per (project_id, snapshot_date)."""
+    __tablename__ = "daily_metric_snapshots"
+
+    id = Column(Integer, primary_key=True, index=True)
+    project_id = Column(
+        Integer,
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False
+    )
+    snapshot_date = Column(Date, nullable=False, index=True)
+
+    # The four metrics we sparkline
+    open_followups = Column(Integer, nullable=False, default=0)
+    overdue_followups = Column(Integer, nullable=False, default=0)
+    touchpoints_active = Column(Integer, nullable=False, default=0)
+    workshops_completed = Column(Integer, nullable=False, default=0)
+
+    created_at = Column(TIMESTAMP, server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint(
+            'project_id', 'snapshot_date',
+            name='uq_snapshot_project_date'
+        ),
+        Index(
+            'ix_snapshot_project_date_desc',
+            'project_id', 'snapshot_date'
+        ),
+    )

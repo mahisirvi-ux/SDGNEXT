@@ -39,6 +39,8 @@
 - Don't add a "Restore Phase 1" feature flag
 - Don't reintroduce sign-off filters on the Workshop Board query
 - Don't modify MoM, follow-up, or email engine behavior without explicit spec
+- On fresh deployment, run `POST /admin/snapshot/backfill-today` to seed
+  sparkline data. See `docs/context/analytics-snapshots.md`.
 
 ### File Organization
 
@@ -46,11 +48,19 @@
 |------|---------|
 | `app/main.py` | FastAPI app + Phase 2 endpoints |
 | `app/services/file_parser.py` | CSV upload processing |
-| `app/services/project_health.py` | Landing page KPIs |
+| `app/services/project_health.py` | Landing page KPIs + daily snapshot capture |
 | `app/services/identity_validator.py` | Name resolution |
 | `js/app-dashboard.js` | Project view init + switchPhase logic |
+| `js/tailwind-config.js` | UI design tokens (Tailwind runtime config) |
 | `js/phase2_technical.js` | Workshop Board table + inline editing |
-| `js/landing.js` | Landing page rendering |
+| `js/landing.js` | Landing page rendering (sparkline cards + drilldown) |
+
+### UI Design Tokens
+
+- Defined in `js/tailwind-config.js`, loaded after Tailwind CDN on all pages.
+- Use token classes (`bg-primary`, `bg-shell`) over raw Tailwind colors for
+  new components.
+- See `docs/context/ui-tokens.md` for the full reference.
 
 ### Action Log Conventions
 
@@ -67,6 +77,9 @@
 - **Daily summary (6 PM):** Technical delivery snapshot, cross-project.
   Shows Workshops Scheduled, Workshops Completed, Open Follow-ups,
   Overdue Follow-ups. Function: `generate_and_send_daily_summary()`.
+- **Daily metric snapshot (00:15):** Captures yesterday's per-project
+  aggregates into `daily_metric_snapshots` for landing-page sparklines.
+  Function: `capture_daily_snapshot()` in `project_health.py`.
 - **Follow-up nudges (9:30 AM Mon-Fri):** Per-owner grouped reminders
 
   from `FollowUpItem` table. ONLY processes manual follow-ups

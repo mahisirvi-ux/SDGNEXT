@@ -10,27 +10,34 @@
 | `/api/*` | FastAPI JSON | All API endpoints |
 | `/css/*`, `/js/*` | Static files | Frontend assets |
 
-## Cross-Project KPIs (`GET /api/landing/summary`)
+## Landing Page — Analytical Sparkline View
 
-### Row 1 — Operational
+The landing page shows a **project-centric analytical view**. Each project
+renders as a card with 14-day sparkline trends for four key metrics:
 
-| KPI | Derivation |
-|-----|-----------|
-| Open Follow-Ups | `COUNT(FollowUpItem) WHERE status = 'OPEN'` across all projects |
-| Overdue | `COUNT(FollowUpItem) WHERE status = 'OPEN' AND due_date < today` |
-| Due This Week | `COUNT(FollowUpItem) WHERE status = 'OPEN' AND due_date BETWEEN today AND end_of_week` |
-| Closed (7 Days) | `COUNT(FollowUpItem) WHERE status = 'CLOSED' AND closed_at >= 7_days_ago` |
-| MoM Drafts | `COUNT(MomSession) WHERE status IN ('DRAFT', 'GENERATED')` |
+- `open_followups`
+- `overdue_followups`
+- `touchpoints_active` (tech_status NOT IN Completed/Cancelled)
+- `workshops_completed` (tech_status = Completed)
 
-### Row 2 — Administrative
+Sparklines read from `daily_metric_snapshots`, populated by a midnight cron
+(00:15). "Current" values (the large numbers) are computed live at request
+time via `_compute_current_metrics()` in `app/api/routes/projects.py`.
 
-| KPI | Derivation |
-|-----|-----------|
-| Total Projects | `COUNT(Project)` |
-| Added This Month | `COUNT(Project) WHERE created_at >= first_day_of_current_month AND created_at IS NOT NULL` |
-| Touchpoints | `COUNT(IntegrationTouchpoint)` across all projects |
-| Workshops Scheduled | `COUNT(IDRTechnical) WHERE tech_status = 'Scheduled'` |
-| Workshops Completed | `COUNT(IDRTechnical) WHERE tech_status = 'Completed'` |
+Clicking a card **expands an inline drilldown** (below the grid, not a modal)
+with three sub-sections: Administrative, Health Snapshot, Recent Activity.
+Only one project can be expanded at a time.
+
+The "Open Project →" button inside the drilldown navigates to `/project?id=X`.
+
+### Endpoints
+
+| Endpoint | Purpose |
+|----------|--------|
+| `GET /api/landing/project-sparklines` | All projects + 14-day arrays + trends |
+| `GET /api/landing/projects/{id}/drilldown` | Admin, health, last 5 activity entries |
+| `GET /api/landing/summary` | **Legacy** — cross-project KPIs (still served, no longer used by landing.js) |
+| `GET /projects` | **Legacy** — enriched project list (still used by index.html) |
 
 ## Canonical Source
 

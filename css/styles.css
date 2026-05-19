@@ -1,3 +1,86 @@
+/* ============================================================
+   DESIGN TOKENS — CSS Custom Properties
+   Shared across all pages. Self-contained; no Tailwind dependency.
+   ============================================================ */
+
+:root {
+    /* Surface */
+    --surface-page: #f8fafc;
+    --surface-card: #ffffff;
+    --surface-elevated: #ffffff;
+
+    /* Borders */
+    --border-subtle: #f1f5f9;
+    --border-default: #e2e8f0;
+    --border-strong: #cbd5e1;
+
+    /* Text */
+    --text-display: #0f172a;
+    --text-primary: #1e293b;
+    --text-body: #334155;
+    --text-secondary: #64748b;
+    --text-meta: #94a3b8;
+    --text-quiet: #cbd5e1;
+
+    /* Accent (single teal) */
+    --accent: #0d9488;
+    --accent-soft: #ccfbf1;
+    --accent-faint: #f0fdfa;
+
+    /* Warning (amber) */
+    --warn: #d97706;
+    --warn-soft: #fef3c7;
+
+    /* Shell (dark navy, app chrome) */
+    --shell: #1a233a;
+    --shell-muted: #94a3b8;
+}
+
+/* Tabular numerals for aligned data displays */
+.tabular-nums {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1;
+}
+
+/* ============================================================
+   ANIMATIONS
+   ============================================================ */
+
+@keyframes drilldown-in {
+    from { opacity: 0; transform: translateY(-4px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+.drilldown-enter {
+    animation: drilldown-in 250ms ease-out;
+}
+
+@keyframes skeleton-pulse {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: 0.5; }
+}
+.skeleton {
+    background: #e2e8f0;
+    border-radius: 4px;
+    animation: skeleton-pulse 1.5s ease-in-out infinite;
+}
+
+/* ============================================================
+   LANDING PAGE — Card interactions
+   ============================================================ */
+
+.project-card {
+    transition: all 200ms ease-out;
+}
+.project-card:hover {
+    border-color: var(--border-strong);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.04);
+}
+
+/* ============================================================
+   EXISTING: View section transitions (index.html Phase 3)
+   ============================================================ */
+
 /* Hide all view sections by default */
 .view-section { 
     display: none; 
@@ -9,14 +92,7 @@
     animation: fadeIn 0.4s ease-in-out; 
 }
 
-/* Keyframes for the view transition */
 @keyframes fadeIn { 
-    from { 
-        opacity: 0; 
-        transform: translateY(10px); 
-    } 
-    to { 
-        opacity: 1; 
-        transform: translateY(0); 
-    } 
+    from { opacity: 0; transform: translateY(10px); } 
+    to   { opacity: 1; transform: translateY(0); } 
 }

@@ -172,7 +172,7 @@ def get_landing_summary(db: Session) -> dict:
 
     phase2_completed = db.query(sqla_func.count(IDRTechnical.id)).filter(
         IDRTechnical.tech_status == "Completed"
-    ).scalar() or 0
+        ).scalar() or 0
 
     return {
         "cross_project": {
@@ -190,4 +190,94 @@ def get_landing_summary(db: Session) -> dict:
             "workshops_scheduled_total": workshops_scheduled,
             "phase2_completed_total": phase2_completed
         }
+    }
+
+
+def capture_daily_snapshot(db: Session, target_date: date = None) -> dict:
+    """Captures one day's metric snapshot for each project.
+
+    Args:
+        target_date: the date the snapshot represents.
+            Defaults to YESTERDAY (since this runs at midnight,
+            we snapshot the day that just ended).
+
+    Returns:
+        {"snapshots_written": N, "projects_processed": M,
+         "date": "YYYY-MM-DD"}
+
+    Idempotent: if a snapshot for (project, date) already exists,
+    it's UPDATED with fresh counts.
+    """
+    from app.models.domain import DailyMetricSnapshot
+
+    if target_date is None:
+        target_date = date.today() - timedelta(days=1)
+
+    projects = db.query(Project).all()
+    written = 0
+
+    for project in projects:
+        tp_ids_q = db.query(IntegrationTouchpoint.id).filter(
+            IntegrationTouchpoint.project_id == project.id
+        ).subquery()
+
+        # Open follow-ups
+        open_fus = db.query(sqla_func.count(FollowUpItem.id)).filter(
+            FollowUpItem.touchpoint_id.in_(tp_ids_q),
+            FollowUpItem.status == "OPEN"
+        ).scalar() or 0
+
+        # Overdue follow-ups (open AND due in the past)
+        overdue_fus = db.query(sqla_func.count(FollowUpItem.id)).filter(
+            FollowUpItem.touchpoint_id.in_(tp_ids_q),
+            FollowUpItem.status == "OPEN",
+            FollowUpItem.due_date.isnot(None),
+            FollowUpItem.due_date < target_date
+        ).scalar() or 0
+
+        # Active touchpoints (not completed/cancelled)
+        active_tps = db.query(sqla_func.count(IDRTechnical.id)).join(
+            IntegrationTouchpoint,
+            IDRTechnical.touchpoint_id == IntegrationTouchpoint.id
+        ).filter(
+            IntegrationTouchpoint.project_id == project.id,
+            IDRTechnical.tech_status.notin_(["Completed", "Cancelled"])
+        ).scalar() or 0
+
+        # Completed workshops
+        completed_ws = db.query(sqla_func.count(IDRTechnical.id)).join(
+            IntegrationTouchpoint,
+            IDRTechnical.touchpoint_id == IntegrationTouchpoint.id
+        ).filter(
+            IntegrationTouchpoint.project_id == project.id,
+            IDRTechnical.tech_status == "Completed"
+        ).scalar() or 0
+
+        # Upsert
+        existing = db.query(DailyMetricSnapshot).filter(
+            DailyMetricSnapshot.project_id == project.id,
+            DailyMetricSnapshot.snapshot_date == target_date
+        ).first()
+
+        if existing:
+            existing.open_followups = open_fus
+            existing.overdue_followups = overdue_fus
+            existing.touchpoints_active = active_tps
+            existing.workshops_completed = completed_ws
+        else:
+            db.add(DailyMetricSnapshot(
+                project_id=project.id,
+                snapshot_date=target_date,
+                open_followups=open_fus,
+                overdue_followups=overdue_fus,
+                touchpoints_active=active_tps,
+                workshops_completed=completed_ws
+            ))
+            written += 1
+
+    db.commit()
+    return {
+        "snapshots_written": written,
+        "projects_processed": len(projects),
+        "date": target_date.isoformat()
     }

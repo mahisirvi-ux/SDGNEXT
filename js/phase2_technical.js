@@ -94,8 +94,8 @@ async function populateTechTable() {
         let countDelayed = 0;
         // ---------------------------------
 
-        if (eligibleItems.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="7" class="px-5 py-12 text-center text-sm text-slate-500 italic">No touchpoints found. <a href="#" onclick="document.getElementById('csvFileInput').click(); return false;" class="text-indigo-500 font-semibold underline">Upload your CSV</a> to populate the Workshop Board.</td></tr>`;
+                if (eligibleItems.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="7" class="px-5 py-12 text-center text-sm text-slate-400">No touchpoints yet.</td></tr>`;
             
             // Zero out metrics if empty
             document.getElementById('tech-metric-total').innerText = 0;

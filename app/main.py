@@ -34,21 +34,40 @@ scheduler = BackgroundScheduler()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Runs daily at 6:00 PM (18:00) for executives
-    scheduler.add_job(generate_and_send_daily_summary, 'cron', hour=18, minute=0)  
-    
+    scheduler.add_job(generate_and_send_daily_summary, 'cron', hour=18, minute=0)
+
     # Follow-up nudges at 9:30 AM Mon-Fri
-    scheduler.add_job(send_followup_nudges, 'cron', day_of_week='mon-fri', hour=9, minute=30) 
-    
+    scheduler.add_job(send_followup_nudges, 'cron', day_of_week='mon-fri', hour=9, minute=30)
+
     # MoM-pointer nudges at 9:35 AM Mon-Fri (after followup nudges finish)
     scheduler.add_job(send_mom_pointer_nudges, 'cron', day_of_week='mon-fri', hour=9, minute=35)
-    
+
+    # Daily metric snapshot - captures yesterday's counts at 00:15
+    scheduler.add_job(_run_daily_snapshot_job, 'cron', hour=0, minute=15)
+
     scheduler.start()
     print("✅ Background Scheduler Started. Summaries at 6PM, Follow-up Nudges at 9:30AM (Mon-Fri).")
-    
+
     yield
-    
+
     scheduler.shutdown()
     print("🛑 Background Scheduler Stopped.")
+
+
+def _run_daily_snapshot_job():
+    """Cron wrapper for capture_daily_snapshot.
+    Manages its own DB session and never raises."""
+    from app.services.project_health import capture_daily_snapshot
+    db = SessionLocal()
+    try:
+        result = capture_daily_snapshot(db)
+        print(f"[Snapshot cron] {result}")
+    except Exception as e:
+        print(f"[Snapshot cron] FAILED: {e}")
+        import traceback
+        traceback.print_exc()
+    finally:
+        db.close()
 
 # 2. Initialize the app (Note the lifespan=lifespan addition here)
 app = FastAPI(title="SDGNEXT Command Center - Enterprise Edition", lifespan=lifespan)
@@ -82,6 +101,38 @@ def test_followup_nudges():
     """Trigger this from the browser to test the follow-up nudge engine."""
     send_followup_nudges()
     return {"message": "Follow-up nudge trigger fired. Check terminal for logs."}
+
+
+@app.post("/admin/snapshot/capture")
+def admin_capture_snapshot(target_date: str = None):
+    """Dev: manually capture a snapshot. Pass YYYY-MM-DD query param
+    to backfill a specific date; omit to snapshot yesterday. Idempotent."""
+    from datetime import date as _date
+    from app.services.project_health import capture_daily_snapshot
+    db = SessionLocal()
+    try:
+        td = None
+        if target_date:
+            td = _date.fromisoformat(target_date)
+        result = capture_daily_snapshot(db, target_date=td)
+        return result
+    finally:
+        db.close()
+
+
+@app.post("/admin/snapshot/backfill-today")
+def admin_backfill_today():
+    """Dev: write a snapshot for TODAY (not yesterday).
+    Useful immediately post-deployment so sparklines have at least
+    one data point on launch day."""
+    from datetime import date as _date
+    from app.services.project_health import capture_daily_snapshot
+    db = SessionLocal()
+    try:
+        result = capture_daily_snapshot(db, target_date=_date.today())
+        return result
+    finally:
+        db.close()
 
 @app.post("/api/generate-mom")
 async def trigger_mom_generation(background_tasks: BackgroundTasks):
@@ -269,7 +320,7 @@ async def update_tech_idr(touchpoint_id: int, request: Request):
                 "Completed": "completed",
             }
             
-            # Ordered steps for backfilling
+                        # Ordered steps for backfilling
             ordered_keys = ["scheduled", "rgtShared", "inProgress", "discussionCompleted", "documentReview", "completed"]
             
             key = status_to_key.get(new_resolved_status)
@@ -284,8 +335,8 @@ async def update_tech_idr(touchpoint_id: int, request: Request):
                     prior_key = ordered_keys[i]
                     if not td_dict["statusDates"].get(prior_key):
                         td_dict["statusDates"][prior_key] = today_str
-            
-                        return td_dict
+
+            return td_dict
 
         if tech:
             old_status = tech.tech_status

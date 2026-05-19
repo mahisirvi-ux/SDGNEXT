@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Touchpoint Details | SDGNext</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="/js/tailwind-config.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
         <style>
         * { font-family: 'Inter', sans-serif; }
@@ -17,10 +18,10 @@
 <body class="bg-[#f1f5f9] antialiased h-screen flex flex-col overflow-hidden">
 
     <!-- TOP HEADER BAR -->
-        <div class="bg-[#1a233a] shadow-lg flex-shrink-0">
+        <div class="bg-shell shadow-lg flex-shrink-0">
         <div class="px-6 py-3 flex justify-between items-center">
             <div class="flex items-center gap-3">
-                <a href="/" class="text-[11px] font-bold text-slate-400 hover:text-white transition-colors" title="Home">
+                                <a href="/" class="text-lg font-bold text-white hover:opacity-80 transition-opacity" title="Home">
                     SDG<span class="text-pink-400">NEXT</span>
                 </a>
                 <span class="text-slate-600">|</span>
@@ -41,7 +42,7 @@
                                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 100-4h14a2 2 0 100 4M5 12a2 2 0 110 4h14a2 2 0 110-4"></path></svg>
                                     Generate Mock
                                 </button>
-                <button id="fd-btn-edit" onclick="toggleDetailsEditMode()" class="flex items-center gap-1.5 bg-pink-500 hover:bg-pink-600 text-white text-[11px] font-bold py-2 px-5 rounded-lg shadow transition-all">
+                <button id="fd-btn-edit" onclick="toggleDetailsEditMode()" class="flex items-center gap-1.5 bg-primary hover:bg-primary-hover text-white text-[11px] font-bold py-2 px-5 rounded-lg shadow transition-all">
                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
                     Edit Details
                 </button>
@@ -325,8 +326,9 @@
                 </div>
 
                 <!-- Follow-Up Add Modal -->
-                <div id="fu-add-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-                    <div class="bg-white rounded-xl shadow-2xl w-[500px] p-6">
+                <!-- Modal sizes: sm=400, md=520, lg=700. See ui-tokens.md. -->
+                            <div id="fu-add-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+                                <div class="bg-white rounded-xl shadow-2xl w-[520px] p-6">
                         <h3 class="text-sm font-bold text-[#1a233a] mb-4">Add Follow-Up</h3>
                         <div class="space-y-3">
                             <div><label class="text-[10px] font-bold text-slate-400 uppercase block mb-1">Description *</label><input type="text" id="fu-add-desc" class="w-full text-xs p-2 border border-slate-200 rounded-lg"></div>
@@ -403,8 +405,8 @@
     </div>
 
     <!-- Generate Mock: Pre-fill Modal -->
-    <div id="mock-create-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-        <div class="bg-white rounded-xl shadow-2xl w-[560px] p-6">
+        <div id="mock-create-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+        <div class="bg-white rounded-xl shadow-2xl w-[520px] p-6">
             <h3 class="text-sm font-bold text-[#1a233a] mb-4">Create Mock Service</h3>
             <p class="text-[11px] text-slate-500 mb-4">Pre-filled from this touchpoint's technical details. Review and adjust before creating.</p>
             <div class="space-y-3">
@@ -446,14 +448,14 @@
             <div id="mock-create-error" class="hidden mt-3 text-xs text-red-600 bg-red-50 border border-red-200 rounded-md px-3 py-2"></div>
             <div class="flex justify-end gap-2 mt-5">
                 <button onclick="closeMockCreateModal()" class="text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 px-4 py-2 rounded-md">Cancel</button>
-                <button onclick="submitMockCreate()" id="mock-create-submit-btn" class="text-xs font-bold text-white bg-pink-500 hover:bg-pink-600 px-4 py-2 rounded-md">Create Mock</button>
+                <button onclick="submitMockCreate()" id="mock-create-submit-btn" class="text-xs font-bold text-white bg-primary hover:bg-primary-hover px-4 py-2 rounded-md">Create Mock</button>
             </div>
         </div>
     </div>
 
         <!-- Generate Mock: Success Modal -->
-    <div id="mock-success-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-        <div class="bg-white rounded-xl shadow-2xl w-[480px] p-6">
+        <div id="mock-success-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+        <div class="bg-white rounded-xl shadow-2xl w-[520px] p-6">
             <div class="flex items-center gap-2 mb-4">
                 <svg class="w-5 h-5 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
                 <h3 class="text-sm font-bold text-[#1a233a]">Mock Created Successfully</h3>

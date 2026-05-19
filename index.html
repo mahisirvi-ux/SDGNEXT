@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SDGNext | Command Center</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="/js/tailwind-config.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
         body { font-family: 'Inter', sans-serif; background-color: #f4f7f9; }
@@ -30,38 +31,38 @@
 
     <main class="flex-1 flex flex-col h-screen overflow-hidden relative">
         
-        <header class="bg-white border-b border-slate-200 px-8 py-4 flex justify-between items-center z-10 shadow-sm">
+                <header class="bg-shell px-6 py-4 flex justify-between items-center z-10">
                         <div class="flex items-center">
                 <a href="/" class="hover:opacity-80 transition-opacity" title="Back to home">
-                    <h1 class="text-2xl font-extrabold tracking-tight text-[#1a233a]">SDG<span class="text-pink-500">NEXT</span></h1>
+                    <h1 class="text-lg font-bold tracking-tight text-white">SDG<span class="text-pink-400">NEXT</span></h1>
                 </a>
             </div>
             
-            <div class="flex items-center space-x-6">
+            <div class="flex items-center space-x-4">
                                 <div class="flex items-center space-x-3">
-                    <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">Project:</span>
+                    <span class="text-[10px] font-bold text-shell-muted uppercase tracking-wider">Project:</span>
                     <input type="hidden" id="projectSelector" value="">
-                    <span id="currentProjectName" class="text-sm font-semibold text-slate-700 bg-slate-100 px-4 py-2 rounded-full border border-slate-200">Loading...</span>
+                    <span id="currentProjectName" class="text-xs font-semibold text-white bg-white/10 px-3 py-1.5 rounded-full border border-white/20">Loading...</span>
                 </div>
                 
-                <div class="h-6 w-px bg-slate-200"></div>
+                <div class="h-5 w-px bg-white/20"></div>
                 
-                <span id="lastUpdatedText" class="text-xs text-slate-400 font-medium mr-2">Ready</span>
+                <span id="lastUpdatedText" class="text-[10px] text-shell-muted font-medium">Ready</span>
                 
-                <button id="btn-send-report" onclick="sendOnDemandReport()" class="cursor-pointer bg-indigo-50 hover:bg-indigo-100 text-indigo-600 border border-indigo-200 text-sm font-semibold py-2 px-4 rounded-full shadow-sm transition-colors inline-flex items-center gap-2 whitespace-nowrap mr-2">
+                <button id="btn-send-report" onclick="sendOnDemandReport()" class="cursor-pointer bg-white/10 hover:bg-white/20 text-white border border-white/20 text-[11px] font-bold py-2 px-3 rounded-lg transition-all inline-flex items-center gap-2 whitespace-nowrap">
                     <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
                     Email Report
                 </button>
-                <button onclick="downloadReport()" class="cursor-pointer bg-emerald-50 hover:bg-emerald-100 text-emerald-600 border border-emerald-200 text-sm font-semibold py-2 px-4 rounded-full shadow-sm transition-colors inline-flex items-center gap-2 whitespace-nowrap mr-2">
+                <button onclick="downloadReport()" class="cursor-pointer bg-white/10 hover:bg-white/20 text-white border border-white/20 text-[11px] font-bold py-2 px-3 rounded-lg transition-all inline-flex items-center gap-2 whitespace-nowrap">
                     <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
                     Export CSV
                 </button>
                 <!-- Manage Identities (replaces the legacy "Manage Teams" single button) -->
-                <div class="relative mr-2" id="manage-identities-wrapper">
-                    <button type="button" id="manage-identities-btn" onclick="toggleIdentitiesMenu(event)" class="cursor-pointer bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 text-sm font-semibold py-2 px-4 rounded-full shadow-sm transition-colors inline-flex items-center gap-2 whitespace-nowrap">
+                <div class="relative" id="manage-identities-wrapper">
+                    <button type="button" id="manage-identities-btn" onclick="toggleIdentitiesMenu(event)" class="cursor-pointer bg-white/10 hover:bg-white/20 text-white border border-white/20 text-[11px] font-bold py-2 px-3 rounded-lg transition-all inline-flex items-center gap-2 whitespace-nowrap">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
-                        Manage Identities
-                        <svg id="manage-identities-caret" class="w-4 h-4 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                        Identities
+                        <svg id="manage-identities-caret" class="w-3 h-3 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
                     </button>
 
                     <div id="manage-identities-menu" class="hidden absolute right-0 mt-2 w-80 bg-white border border-slate-200 rounded-xl shadow-xl z-40 overflow-hidden">
@@ -101,7 +102,7 @@
                     </div>
                 </div>
 
-                <label class="cursor-pointer bg-[#1a233a] hover:bg-slate-800 text-white text-sm font-semibold py-2 px-4 rounded-full shadow-md transition-colors inline-flex items-center gap-2 whitespace-nowrap">
+                <label class="cursor-pointer bg-primary hover:bg-primary-hover text-white text-[11px] font-bold py-2 px-3 rounded-lg shadow transition-all inline-flex items-center gap-2 whitespace-nowrap">
                     <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
                     Upload CSV
                     <input type="file" id="csvFileInput" accept=".csv" class="hidden">
