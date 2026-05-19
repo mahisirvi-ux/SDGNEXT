@@ -1,4 +1,5 @@
 import smtplib
+import uuid
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from datetime import datetime, timedelta
@@ -13,6 +14,20 @@ SMTP_PORT = 587
 SMTP_USERNAME = "mahi.sirvi@gmail.com"
 SMTP_PASSWORD = "klrynpcgevlubkfj" 
 MOM_RECIPIENTS = ["mahi.sirvi@gmail.com", "rahulnikam5050@gmail.com"] # Add PMO/Leadership emails here
+
+
+def _parse_mom_msg_id(log):
+    """Extract Message-ID from a MOM_SENT log comment.
+
+    Returns None if absent (e.g., legacy logs from before Message-ID
+    was captured in the comment).
+    """
+    if not log or not log.comment:
+        return None
+    for part in log.comment.split(";"):
+        if part.startswith("MSG_ID="):
+            return part.split("=", 1)[1]
+    return None
 
 def generate_and_send_mom():
     """Gathers the last 48 hours of discussions and sends an AI-generated MOM."""
@@ -182,8 +197,14 @@ def send_touchpoint_mom(touchpoint_id: int, html_body: str, override_recipients:
             "</div></body></html>"
         )
 
+                # Generate stable Message-ID for threading
+        msg_id = f"<mom-{touchpoint_id}-{uuid.uuid4().hex[:8]}@sdgnext.local>"
+
         msg = MIMEMultipart("alternative")
-        msg["Subject"] = f"MoM: {tp_name} [{today_str}]"
+        msg["Message-ID"] = msg_id
+        # CRITICAL: Subject is date-free to enable threading of subsequent
+        # MoM-pointer nudges. Date is communicated in the email body.
+        msg["Subject"] = f"MoM: {tp_name}"
         msg["From"] = SMTP_USERNAME
         msg["To"] = ", ".join(to_emails)
         if cc_emails:
@@ -196,22 +217,22 @@ def send_touchpoint_mom(touchpoint_id: int, html_body: str, override_recipients:
             server.login(SMTP_USERNAME, SMTP_PASSWORD)
             server.sendmail(SMTP_USERNAME, envelope, msg.as_string())
 
-        # Only write action log + commit if caller hasn't taken ownership
+                # Only write action log + commit if caller hasn't taken ownership
         if write_action_log:
             recipient_count = len(to_emails) + len(cc_emails)
             db.add(IDRActionLog(
                 touchpoint_id=touchpoint_id,
                 action_type="MOM_SENT",
                 action_by="User",
-                comment=f"MoM emailed to {recipient_count} recipients"
+                comment=f"MoM emailed to {recipient_count} recipients;MSG_ID={msg_id}"
             ))
             db.commit()
 
         print(f"[{datetime.now()}] MoM sent for TP {touchpoint_id} to {to_emails}")
-        return {"sent_to": to_emails, "skipped": skipped, "success": True}
+        return {"sent_to": to_emails, "skipped": skipped, "success": True, "msg_id": msg_id}
 
     except Exception as e:
         print(f"[{datetime.now()}] Failed to send touchpoint MoM: {e}")
-        return {"sent_to": [], "skipped": [str(e)], "success": False}
+        return {"sent_to": [], "skipped": [str(e)], "success": False, "msg_id": None}
     finally:
         db.close()

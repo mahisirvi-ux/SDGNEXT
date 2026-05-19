@@ -154,7 +154,7 @@ def get_landing_summary(db: Session) -> dict:
 
     mom_drafts = db.query(sqla_func.count(MomSession.id)).filter(
         MomSession.status.in_(["DRAFT", "GENERATED"])
-    ).scalar() or 0
+        ).scalar() or 0
 
     # Projects overview
     total_projects = db.query(sqla_func.count(Project.id)).scalar() or 0
@@ -166,8 +166,8 @@ def get_landing_summary(db: Session) -> dict:
 
     touchpoints_total = db.query(sqla_func.count(IntegrationTouchpoint.id)).scalar() or 0
 
-    phase1_signed_off = db.query(sqla_func.count(IDRFunctional.id)).filter(
-        IDRFunctional.idr_status.ilike("%Signed-Off%")
+    workshops_scheduled = db.query(sqla_func.count(IDRTechnical.id)).filter(
+        IDRTechnical.tech_status == "Scheduled"
     ).scalar() or 0
 
     phase2_completed = db.query(sqla_func.count(IDRTechnical.id)).filter(
@@ -187,7 +187,7 @@ def get_landing_summary(db: Session) -> dict:
             "total_projects": total_projects,
             "created_this_month": created_this_month,
             "touchpoints_total": touchpoints_total,
-            "phase1_signed_off_total": phase1_signed_off,
+            "workshops_scheduled_total": workshops_scheduled,
             "phase2_completed_total": phase2_completed
         }
     }

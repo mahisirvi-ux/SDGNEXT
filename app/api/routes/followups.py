@@ -224,3 +224,36 @@ def delete_followup(tp_id: int, item_id: int, db: Session = Depends(get_db)):
     db.delete(item)
     db.commit()
     return {"status": "deleted"}
+
+
+# ============================================================
+# DEV-PHASE: MANUAL MOM-POINTER NUDGE TRIGGER
+# ============================================================
+
+@router.post("/{tp_id}/mom-nudge-now")
+def trigger_mom_pointer_nudge_now(tp_id: int, db: Session = Depends(get_db)):
+    """Dev-phase: manually trigger MoM-pointer nudge for one touchpoint.
+
+    Bypasses the daily throttle (force=True) so the same recipient can be
+    re-nudged multiple times for testing email threading.
+
+    Returns:
+        200 with {"sent": true, "items_count": N, "reason": "ok"} on success.
+        200 with {"sent": false, "reason": "..."} on logical skip.
+
+    NOTE: This is a development affordance. In production it should be
+    gated behind a feature flag or removed entirely.
+    """
+    from app.core.email_engine import _process_touchpoint_mom_nudge
+
+    _get_project_id(db, tp_id)  # validates touchpoint exists
+    today = date.today()
+
+    try:
+        result = _process_touchpoint_mom_nudge(db, tp_id, today, force=True)
+        db.commit()
+        return result
+    except Exception as e:
+        db.rollback()
+        return {"sent": False, "items_count": 0, "reason": "send_failed",
+                "error": str(e)}

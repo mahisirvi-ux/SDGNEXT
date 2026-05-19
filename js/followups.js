@@ -57,9 +57,12 @@ function renderFollowupsTab() {
     const closedCount = fuState.counts.closed;
     const allCount = fuState.allItems.length;
 
-    let html = `<div class="flex items-center justify-between mb-4">
+        let html = `<div class="flex items-center justify-between mb-4">
         <h3 class="text-xs font-bold text-[#1a233a] uppercase tracking-wider">Follow-Ups</h3>
-        <button onclick="openFuAddModal()" class="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50 px-3 py-1.5 rounded-md hover:bg-indigo-100 transition-colors">+ Add Follow-Up</button>
+        <div class="flex items-center gap-2">
+            <button onclick="triggerMomNudgeNow(event)" class="text-[10px] font-bold text-purple-600 hover:text-purple-800 bg-purple-50 px-3 py-1.5 rounded-md hover:bg-purple-100 transition-colors border border-purple-200" title="Dev: manually trigger MoM-pointer nudge email for this touchpoint (bypasses throttle)">&#129514; Test MoM Nudge</button>
+            <button onclick="openFuAddModal()" class="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50 px-3 py-1.5 rounded-md hover:bg-indigo-100 transition-colors">+ Add Follow-Up</button>
+        </div>
     </div>`;
 
     // Filter bar
@@ -251,6 +254,60 @@ async function deleteFollowup(itemId) {
         }
     } catch (err) {
         alert("Network error.");
+    }
+}
+
+// ==========================================
+// DEV: MANUAL MOM-POINTER NUDGE
+// ==========================================
+
+async function triggerMomNudgeNow(event) {
+    const tpId = getFuTpId();
+    if (!tpId) {
+        alert("Touchpoint context not loaded.");
+        return;
+    }
+
+    if (!confirm("Send MoM-pointer nudge now?\n\n" +
+        "This will email the touchpoint's open MoM-spawned follow-ups " +
+        "to the resolved recipients, threaded on the original MoM email. " +
+        "Throttle is bypassed for testing.")) {
+        return;
+    }
+
+    const btn = event.currentTarget;
+    const originalHTML = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = "Sending...";
+
+    try {
+        const resp = await fetch(`/api/touchpoints/${tpId}/mom-nudge-now`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" }
+        });
+        const data = await resp.json();
+
+        if (data.sent) {
+            const extra = data.reason === "no_anchor_sent_anyway"
+                ? "\n(Sent without threading — no MoM with MSG_ID exists yet.)"
+                : "";
+            alert(`\u2713 MoM nudge sent for ${data.items_count} open item(s). ` +
+                  `Check the recipient inbox.${extra}`);
+        } else {
+            const reasonLabels = {
+                "no_items": "No open MoM-spawned follow-ups for this touchpoint.",
+                "all_throttled": "All items throttled (should not happen with force=true).",
+                "no_recipients": "No recipients could be resolved. Check pending-with and owner fields.",
+                "send_failed": `Send failed: ${data.error || "SMTP error"}`
+            };
+            const msg = reasonLabels[data.reason] || data.reason;
+            alert(`MoM nudge: ${msg}`);
+        }
+    } catch (err) {
+        alert("Network or server error: " + err.message);
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalHTML;
     }
 }
 

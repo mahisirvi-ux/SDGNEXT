@@ -1,5 +1,5 @@
 import os
-from fastapi import FastAPI, BackgroundTasks, Request, HTTPException, Depends
+from fastapi import FastAPI, BackgroundTasks, Request, HTTPException, Depends, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, StreamingResponse
@@ -12,8 +12,8 @@ from app.services.identity_validator import enrich_owner_label
 from app.core.mom_engine import generate_and_send_mom
 from app.models.domain import IntegrationTouchpoint, IDRFunctional, IDRTechnical, IDRActionLog, TechnicalDocument
 # Import our new architecture
-from app.api.routes import upload, projects, tasks, integrations, mom, followups
-from app.core.email_engine import generate_and_send_daily_summary, generate_and_send_follow_ups, send_followup_nudges
+from app.api.routes import upload, projects, tasks, integrations, mom, followups, mocks
+from app.core.email_engine import generate_and_send_daily_summary, send_followup_nudges, send_mom_pointer_nudges
 import mimetypes
 from datetime import date, datetime
 from app.workshop_mailer import send_workshop_invites
@@ -34,16 +34,16 @@ scheduler = BackgroundScheduler()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Runs daily at 6:00 PM (18:00) for executives
-    scheduler.add_job(generate_and_send_daily_summary, 'cron', hour=18, minute=0) 
-    
-        # NEW: Runs at 9:00 AM, Monday-Friday for the Bank teams
-    scheduler.add_job(generate_and_send_follow_ups, 'cron', day_of_week='mon-fri', hour=9, minute=0) 
+    scheduler.add_job(generate_and_send_daily_summary, 'cron', hour=18, minute=0)  
     
     # Follow-up nudges at 9:30 AM Mon-Fri
     scheduler.add_job(send_followup_nudges, 'cron', day_of_week='mon-fri', hour=9, minute=30) 
     
+    # MoM-pointer nudges at 9:35 AM Mon-Fri (after followup nudges finish)
+    scheduler.add_job(send_mom_pointer_nudges, 'cron', day_of_week='mon-fri', hour=9, minute=35)
+    
     scheduler.start()
-    print("✅ Background Scheduler Started. Summaries at 6PM, Follow-ups at 9AM (Mon-Fri).")
+    print("✅ Background Scheduler Started. Summaries at 6PM, Follow-up Nudges at 9:30AM (Mon-Fri).")
     
     yield
     
@@ -68,6 +68,7 @@ app.include_router(tasks.router)
 app.include_router(integrations.router)
 app.include_router(mom.router)
 app.include_router(followups.router)
+app.include_router(mocks.router)
 
 # --- NEW: MANUAL TEST ROUTE ---
 @app.get("/test-daily-email")
@@ -75,12 +76,6 @@ def test_email_engine():
     """Trigger this from the browser to instantly test your email credentials and layout."""
     generate_and_send_daily_summary()
     return {"message": "Email trigger fired. Check terminal for success/failure logs."}
-
-@app.get("/test-follow-ups")
-def test_email_follow_ups():
-    """Trigger this from the browser to instantly test the follow-up engine."""
-    generate_and_send_follow_ups()
-    return {"message": "Follow-up trigger fired. Check terminal for success/failure logs."}
 
 @app.get("/test-followup-nudges")
 def test_followup_nudges():
@@ -140,11 +135,10 @@ def get_phase2_dashboard(request: Request):
             IntegrationTouchpoint, IDRFunctional, IDRTechnical
         ).join(
             IDRFunctional, IntegrationTouchpoint.id == IDRFunctional.touchpoint_id
-        ).outerjoin(
+                ).outerjoin(
             IDRTechnical, IntegrationTouchpoint.id == IDRTechnical.touchpoint_id
         ).filter(
-            IntegrationTouchpoint.project_id == project.id,
-            IDRFunctional.idr_status.ilike("%Signed-Off%")
+            IntegrationTouchpoint.project_id == project.id
         ).all()
 
         dashboard_data = []
@@ -153,7 +147,7 @@ def get_phase2_dashboard(request: Request):
         for tp, func, tech in results:
 
             tech_owner = getattr(func, "owner", "Unassigned") or "Unassigned"
-                        # Try identity-master enrichment first (yields "Rahul (CBS)" when matched).
+            # Try identity-master enrichment first (yields "Rahul (CBS)" when matched).
             enriched = enrich_owner_label(db, tech_owner, project_id=project.id, _cache=owner_cache)
             display_owner = enriched if enriched else tech_owner
 
@@ -163,7 +157,7 @@ def get_phase2_dashboard(request: Request):
             tech_status = tech.tech_status if tech and tech.tech_status else "Auto"
 
                         # Preserve manually set statuses
-            manual_statuses = ["Completed", "Rescheduled", "Pending Document", "Document Review"]
+            manual_statuses = ["Completed", "Rescheduled", "Pending Document", "Document Review", "In Progress"]
             
             if tech_status in manual_statuses:
                 pass  # Keep as-is
@@ -249,16 +243,68 @@ async def update_tech_idr(touchpoint_id: int, request: Request):
         clean_start = parse_dt(data.get("start"))
         clean_end = parse_dt(data.get("end"))
         
-                        # Accept manual status overrides for workflow-controlled statuses
+        # Accept manual status overrides for workflow-controlled statuses
         incoming_status = data.get("status", "Auto")
-        allowed_manual = ["Completed", "Rescheduled", "Pending Document", "Document Review", "Pending Workshop"]
+        allowed_manual = ["Completed", "Rescheduled", "Pending Document", "Document Review", "Pending Workshop", "In Progress"]
         new_status = incoming_status if incoming_status in allowed_manual else "Auto"
 
+        # --- Status date stamping logic ---
+        # When status changes, stamp the transition date in technical_details.statusDates
+        def stamp_status_date(td_dict, old_status, new_resolved_status):
+            """Stamps today's date for the new status in statusDates.
+            Also stamps all prior steps that don't have dates yet."""
+            if not td_dict:
+                td_dict = {}
+            if "statusDates" not in td_dict:
+                td_dict["statusDates"] = {}
+            
+            today_str = date.today().isoformat()
+            
+            # Map status values to statusDates keys
+            status_to_key = {
+                "Scheduled": "scheduled",
+                "In Progress": "inProgress",
+                "Pending Document": "discussionCompleted",
+                "Document Review": "documentReview",
+                "Completed": "completed",
+            }
+            
+            # Ordered steps for backfilling
+            ordered_keys = ["scheduled", "rgtShared", "inProgress", "discussionCompleted", "documentReview", "completed"]
+            
+            key = status_to_key.get(new_resolved_status)
+            if key:
+                # Stamp current step
+                if not td_dict["statusDates"].get(key):
+                    td_dict["statusDates"][key] = today_str
+                
+                # Backfill all prior steps that don't have dates
+                key_idx = ordered_keys.index(key) if key in ordered_keys else -1
+                for i in range(key_idx):
+                    prior_key = ordered_keys[i]
+                    if not td_dict["statusDates"].get(prior_key):
+                        td_dict["statusDates"][prior_key] = today_str
+            
+                        return td_dict
+
         if tech:
+            old_status = tech.tech_status
             tech.integration_type = data.get("integration")
             tech.start_date = clean_start
             tech.end_date = clean_end
             tech.tech_status = new_status
+
+            # Stamp status date when status changes
+            if new_status != "Auto" and new_status != old_status:
+                current_td = dict(tech.technical_details or {})
+                current_td = stamp_status_date(current_td, old_status, new_status)
+                # Also stamp 'scheduled' if start_date is being set
+                if clean_start and not current_td.get("statusDates", {}).get("scheduled"):
+                    current_td.setdefault("statusDates", {})["scheduled"] = clean_start.strftime("%Y-%m-%d")
+                tech.technical_details = current_td
+                from sqlalchemy.orm.attributes import flag_modified
+                flag_modified(tech, "technical_details")
+
             if "technical_details" in data:
                 td = data.get("technical_details")
 
@@ -272,7 +318,7 @@ async def update_tech_idr(touchpoint_id: int, request: Request):
                         comment=new_discussion
                     ))
 
-                # Log pointer/action entry if provided
+                                # Log pointer/action entry if provided
                 new_pointer = td.pop("pointers", "").strip() if td else ""
                 if new_pointer:
                     db.add(IDRActionLog(
@@ -282,12 +328,29 @@ async def update_tech_idr(touchpoint_id: int, request: Request):
                         open_pointer_history=new_pointer
                     ))
 
+                # Merge statusDates into incoming td to preserve them
+                if tech.technical_details and tech.technical_details.get("statusDates"):
+                    td.setdefault("statusDates", {}).update(tech.technical_details["statusDates"])
+
                 tech.technical_details = td
+                flag_modified(tech, "technical_details")
         else:
             td = data.get("technical_details", {})
             new_discussion = td.pop("discussion", "").strip() if td else ""
             new_pointer = td.pop("pointers", "").strip() if td else ""
 
+            # Stamp status date for new records too
+            if new_status != "Auto":
+                td = stamp_status_date(td or {}, None, new_status)
+            if clean_start:
+                td = td or {}
+                td.setdefault("statusDates", {})
+                if not td["statusDates"].get("scheduled"):
+                    td["statusDates"]["scheduled"] = clean_start.strftime("%Y-%m-%d")
+
+            # Defensive fallback: this lazy-creation path remains for any legacy
+            # data without an IDRTechnical row. Normal flow (CSV upload) now
+            # eagerly creates the row in file_parser.py.
             tech = IDRTechnical(
                 touchpoint_id=touchpoint_id,
                 integration_type=data.get("integration"),
@@ -320,10 +383,20 @@ async def update_tech_idr(touchpoint_id: int, request: Request):
     finally:
         db.close()
 @app.post("/api/phase2/trigger-invites")
-def trigger_manual_invites():
-    """Manually triggers the workshop invite emails for tomorrow."""
-    result = send_workshop_invites()
+def trigger_manual_invites(project_id: int = Body(..., embed=True)):
+    """Manually triggers workshop invite emails for tomorrow's scheduled
+    workshops within the given project."""
+    result = send_workshop_invites(project_id=project_id)
     return result
+
+
+@app.get("/test-mom-pointer-nudges")
+def test_mom_pointer_nudges_endpoint():
+    """Manual trigger for MoM-pointer nudges (testing only)."""
+    send_mom_pointer_nudges()
+    return {"status": "triggered"}
+
+
 # 1. Serve the new HTML Page
 @app.get("/details")
 def serve_details_page():
@@ -358,7 +431,51 @@ def get_single_touchpoint(tp_id: int):
         tech_status = tech.tech_status if tech and tech.tech_status else "Auto"
         integration_type = tech.integration_type if tech and tech.integration_type else "unassigned"
 
-                # Latest 5 discussion entries
+        # Auto-calculate effective status (same logic as dashboard)
+        manual_statuses = ["Completed", "Rescheduled", "Pending Document", "Document Review", "In Progress"]
+        effective_status = tech_status
+        if tech_status not in manual_statuses:
+            if tech and tech.start_date and tech.end_date:
+                now = datetime.now()
+                start_dt = tech.start_date if isinstance(tech.start_date, datetime) else datetime.fromisoformat(str(tech.start_date))
+                end_dt = tech.end_date if isinstance(tech.end_date, datetime) else datetime.fromisoformat(str(tech.end_date))
+                if now > end_dt:
+                    effective_status = "Delayed"
+                elif now < start_dt:
+                    effective_status = "Scheduled"
+                else:
+                    effective_status = "In Progress"
+            else:
+                effective_status = "Pending Workshop"
+
+        # Auto-stamp dates for auto-calculated statuses (lazy write-back)
+        if tech and effective_status in ("Scheduled", "In Progress"):
+            from sqlalchemy.orm.attributes import flag_modified
+            td = dict(tech.technical_details or {})
+            sd = td.setdefault("statusDates", {})
+            changed = False
+            if effective_status == "Scheduled" and not sd.get("scheduled") and tech.start_date:
+                sd["scheduled"] = tech.start_date.strftime("%Y-%m-%d")
+                changed = True
+            if effective_status == "In Progress":
+                if not sd.get("scheduled") and tech.start_date:
+                    sd["scheduled"] = tech.start_date.strftime("%Y-%m-%d")
+                    changed = True
+                if not sd.get("inProgress"):
+                    sd["inProgress"] = date.today().isoformat()
+                    changed = True
+            if changed:
+                tech.technical_details = td
+                flag_modified(tech, "technical_details")
+                db.commit()
+
+        # Enrich owner fields with department context
+        owner_cache = {}
+        owner_display = enrich_owner_label(db, tech_owner, project_id=tp.project_id, _cache=owner_cache)
+        tech_owner_display = enrich_owner_label(db, getattr(func, "technical_owner", None), project_id=tp.project_id, _cache=owner_cache)
+        mod_owner_display = enrich_owner_label(db, getattr(func, "module_owner_functional", None), project_id=tp.project_id, _cache=owner_cache)
+
+        # Latest 5 discussion entries
         discussion_logs = db.query(IDRActionLog).filter(
             IDRActionLog.touchpoint_id == tp_id,
             IDRActionLog.action_type == "DISCUSSION"
@@ -388,6 +505,7 @@ def get_single_touchpoint(tp_id: int):
             "status": "success",
             "data": {
                 "id": tp.id,
+                "project_id": tp.project_id,
                 "name": tp.name,
                 "module": func.module or "Unknown",
                 "owner": tech_owner,
@@ -400,18 +518,22 @@ def get_single_touchpoint(tp_id: int):
                 # Using a fallback to lowercase 'input' just in case your model is strictly lowercase
                 "input": getattr(func, "Input", getattr(func, "inputs", "-")), 
                 "output": getattr(func, "expected_output", "-"),          
-                "signoff": formatted_signoff,                    
+                                "signoff": formatted_signoff,                    
                 # -------------------------------------
                 
                 "business_flow": getattr(func, "business_flow", "-"),
-                "mod_owner": getattr(func, "module_owner", "-"),
-                "tech_owner_name": getattr(func, "technical_owner", "-"),
+                "mod_owner": getattr(func, "module_owner_functional", None) or "-",
+                "tech_owner_name": getattr(func, "technical_owner", None) or "-",
                 "fallback": getattr(func, "business_fallback", "-"),
                 "business_purpose": getattr(func, "business_req", "-"),
+                # Enriched display labels with department
+                "owner_display": owner_display,
+                "tech_owner_display": tech_owner_display,
+                                "mod_owner_display": mod_owner_display,
                 
                 "start": tech.start_date.strftime("%Y-%m-%d %H:%M") if (tech and tech.start_date) else "",
                 "end":   tech.end_date.strftime("%Y-%m-%d %H:%M")   if (tech and tech.end_date)   else "",
-                "techStatus": tech_status,
+                "techStatus": effective_status,
                 "techDetails": tech.technical_details if tech and tech.technical_details else {},
                 "pendingWith": (tech.pending_with if tech else "") or "",
                 "discussion_log": formatted_discussions.strip(),
@@ -433,20 +555,20 @@ def generate_wud_word_endpoint(tp_id: int):
     if tp_data.get("integration", "").lower() != "api":
         raise HTTPException(status_code=400, detail="WUD Generation is currently only supported for API Integration Types.")
 
-        try:
-            # Call the new Word generator
-            word_file = create_wud_word(tp_data)
-            safe_name = tp_data.get("name", "Touchpoint").replace(" ", "_")
+    try:
+        # Call the new Word generator
+        word_file = create_wud_word(tp_data)
+        safe_name = tp_data.get("name", "Touchpoint").replace(" ", "_")
 
-            # Stream the file with the exact MIME type for .docx
-            return StreamingResponse(
-                word_file,
-                media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                headers={"Content-Disposition": f"attachment; filename={safe_name}_WUD.docx"}
-            )
-        except Exception as e:
-            print(f"Backend Word Generation Error: {e}")
-            raise HTTPException(status_code=500, detail=str(e))
+        # Stream the file with the exact MIME type for .docx
+        return StreamingResponse(
+            word_file,
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            headers={"Content-Disposition": f"attachment; filename={safe_name}_WUD.docx"}
+        )
+    except Exception as e:
+        print(f"Backend Word Generation Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/api/phase2/touchpoint/{tp_id}/documents")

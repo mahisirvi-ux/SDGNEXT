@@ -95,7 +95,7 @@ async function populateTechTable() {
         // ---------------------------------
 
         if (eligibleItems.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="7" class="px-5 py-12 text-center text-sm text-slate-500 italic">No touchpoints have been signed off in Phase 1 yet.</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="7" class="px-5 py-12 text-center text-sm text-slate-500 italic">No touchpoints found. <a href="#" onclick="document.getElementById('csvFileInput').click(); return false;" class="text-indigo-500 font-semibold underline">Upload your CSV</a> to populate the Workshop Board.</td></tr>`;
             
             // Zero out metrics if empty
             document.getElementById('tech-metric-total').innerText = 0;
@@ -157,9 +157,10 @@ async function populateTechTable() {
             const isUnassignedInteg = (!isApi && !isDb) ? 'selected' : '';
             // ------------------------------------
 
-            const isCompleted = tp.techStatus === 'Completed' ? 'selected' : '';
+                        const isCompleted = tp.techStatus === 'Completed' ? 'selected' : '';
             const isRescheduled = tp.techStatus === 'Rescheduled' ? 'selected' : '';
-            const isAuto = (!isCompleted && !isRescheduled) ? 'selected' : '';
+            const isPendingDocument = tp.techStatus === 'Pending Document' ? 'selected' : '';
+            const isAuto = (!isCompleted && !isRescheduled && !isPendingDocument) ? 'selected' : '';
 
                         tr.innerHTML = `
                             <td class="px-5 py-3.5">
@@ -201,8 +202,9 @@ async function populateTechTable() {
                 
                             <td class="px-4 py-3.5">
                                 <span id="status-pill-${tp.id}" class="inline-flex px-2.5 py-1 text-[10px] uppercase font-bold rounded-md border ${tp.statusClass} whitespace-nowrap">${tp.techStatus}</span>
-                                <select id="status-edit-${tp.id}" class="hidden text-xs border border-slate-300 rounded-md px-2 py-1 shadow-sm bg-white w-full max-w-[115px] focus:ring-2 focus:ring-indigo-500">
+                                                                <select id="status-edit-${tp.id}" class="hidden text-xs border border-slate-300 rounded-md px-2 py-1 shadow-sm bg-white w-full max-w-[115px] focus:ring-2 focus:ring-indigo-500">
                                     <option value="Auto" ${isAuto}>Auto-Calculate</option>
+                                    <option value="Pending Document" ${isPendingDocument}>Discussion Completed</option>
                                     <option value="Completed" ${isCompleted}>Completed</option>
                                     <option value="Rescheduled" ${isRescheduled}>Rescheduled</option>
                                 </select>
@@ -504,18 +506,37 @@ async function triggerWorkshopInvites() {
     btn.classList.add('opacity-75', 'cursor-wait');
 
     try {
+        // Read project_id from URL param (/project?id=X)
+        const projectId = new URLSearchParams(window.location.search).get('id');
+        if (!projectId) {
+            alert('Could not determine current project. Please reload.');
+            return;
+        }
+
         const response = await fetch('/api/phase2/trigger-invites', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' }
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ project_id: parseInt(projectId) })
         });
         
         const data = await response.json();
         
         if (response.ok && data.status === "success") {
             if (data.emails_sent > 0) {
-                alert(`Success! Generated and sent ${data.emails_sent} workshop invites for tomorrow.`);
+                let msg = `Sent ${data.emails_sent} workshop invite(s)`;
+                if (data.rescheduled_count > 0) {
+                    msg += ` (${data.rescheduled_count} marked as rescheduled)`;
+                }
+                if (data.skipped_duplicates > 0) {
+                    msg += `. Skipped ${data.skipped_duplicates} already-invited touchpoint(s)`;
+                }
+                alert(msg + '.');
             } else {
-                alert(`Notice: ${data.message}`);
+                let msg = data.message || 'No workshops scheduled for tomorrow.';
+                if (data.skipped_duplicates > 0) {
+                    msg += ` (${data.skipped_duplicates} already invited)`;
+                }
+                alert(msg);
             }
         } else {
             alert("Error sending invites: " + data.message);

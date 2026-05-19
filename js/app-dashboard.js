@@ -34,60 +34,32 @@ document.addEventListener('DOMContentLoaded', async () => {
         return;
     }
 
-                // Populate dropdown and select matching project
-    projectSelector.innerHTML = '';
-    projects.forEach(p => {
-        const opt = document.createElement('option');
-        opt.value = p.project_name;
-        opt.dataset.id = p.id;
-        opt.innerText = p.project_name;
-        if (p.id === matchedProject.id) opt.selected = true;
-        projectSelector.appendChild(opt);
-    });
+
+    // Set project name on hidden input (compatibility shim) and visible display
     projectSelector.value = matchedProject.project_name;
+    document.getElementById('currentProjectName').textContent = matchedProject.project_name;
 
     window.currentProjectName = matchedProject.project_name;
     await loadData(matchedProject.project_name);
 
-    // Handle navigation from details page with phase preference
+        // Handle navigation from details page with phase preference
     const savedPhase = localStorage.getItem('activePhase');
-    if (savedPhase) {
-        localStorage.removeItem('activePhase');
-        setTimeout(() => {
-            if (typeof switchPhase === 'function') {
-                switchPhase(parseInt(savedPhase));
-            }
-        }, 300);
-    }
-
-        // Listeners
-    projectSelector.addEventListener('change', (e) => {
-    if (e.target.value) {
-        window.currentProjectName = e.target.value;
-        // Update URL with new project id
-        const selectedOpt = e.target.selectedOptions[0];
-        const newId = selectedOpt.dataset.id;
-        history.pushState({}, '', `/project?id=${newId}`);
-        if(typeof window.closeFlyout === 'function') window.closeFlyout();
-        loadData(e.target.value);
-        // If Phase 2 board is currently visible, refresh it for the new project
-        if (typeof populateTechTable === 'function') {
-            const phase2Board = document.getElementById('phase2-board');
-            if (phase2Board && !phase2Board.classList.contains('hidden')) {
-                populateTechTable();
-            }
+    localStorage.removeItem('activePhase');
+    // Phase 1 no longer exists as a UI surface; default to Workshop Board (phase 2)
+    const parsed = savedPhase ? parseInt(savedPhase) : 0;
+    const effectivePhase = (!parsed || parsed === 1 || parsed > 3) ? 2 : parsed;
+    setTimeout(() => {
+        if (typeof switchPhase === 'function') {
+            switchPhase(effectivePhase);
         }
-    } else {
-        showEmptyState();
-    }
-    });
+    }, 300);
 
     fileInput.addEventListener('change', async (e) => {
         const file = e.target.files[0];
         if (!file || !projectSelector.value) return;
 
         const statusText = document.getElementById('lastUpdatedText');
-        if(statusText) statusText.innerText = `Uploading Phase 1 Data...`;
+        if(statusText) statusText.innerText = `Uploading Workshop Board Data...`;
 
         const formData = new FormData();
         formData.append('file', file);
@@ -566,6 +538,9 @@ window.submitActionLog = async function() {
 };
 
 window.switchPhase = function(phaseNumber) {
+    // Phase 1 has been removed from the UI — redirect to Workshop Board (phase 2)
+    if (phaseNumber === 1) phaseNumber = 2;
+
     // --- Hide ALL boards completely (remove every layout class, then add hidden) ---
     const phase1 = document.getElementById('phase1-board');
     const phase2 = document.getElementById('phase2-board');
@@ -737,3 +712,29 @@ window.downloadMigrationTemplate = function() {
     }
     window.open(`/admin/migration-template/${projectSelector.value}`, '_blank');
 };
+
+// ==========================================
+// MANAGE IDENTITIES DROPDOWN
+// ==========================================
+window.toggleIdentitiesMenu = function(event) {
+    event.stopPropagation();
+    const menu = document.getElementById('manage-identities-menu');
+    const caret = document.getElementById('manage-identities-caret');
+    if (menu) menu.classList.toggle('hidden');
+    if (caret) caret.classList.toggle('rotate-180');
+};
+
+window.closeIdentitiesMenu = function() {
+    const menu = document.getElementById('manage-identities-menu');
+    const caret = document.getElementById('manage-identities-caret');
+    if (menu) menu.classList.add('hidden');
+    if (caret) caret.classList.remove('rotate-180');
+};
+
+// Close identities menu on click outside
+document.addEventListener('click', (e) => {
+    const wrapper = document.getElementById('manage-identities-wrapper');
+    if (wrapper && !wrapper.contains(e.target)) {
+        closeIdentitiesMenu();
+    }
+});

@@ -361,12 +361,14 @@ async def send_session_mom_endpoint(session_id: int, request: Request, db: Sessi
                 db.add(fu)
                 followups_spawned += 1
 
-            # Action log (append-only)
+                        # Action log (append-only)
             recipient_count = len(result.get("sent_to", []))
+            msg_id_str = result.get("msg_id") or ""
             log_comment = (
                 f"MoM session #{session.id} ({session.session_date}) "
                 f"emailed to {recipient_count} recipients; "
                 f"{followups_spawned} follow-ups spawned"
+                f";MSG_ID={msg_id_str}"
             )
             db.add(IDRActionLog(
                 touchpoint_id=session.touchpoint_id,

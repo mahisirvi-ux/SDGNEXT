@@ -47,7 +47,7 @@ function renderKpis(summary) {
     setText('kpi-total-projects', po.total_projects);
     setText('kpi-added-month', po.created_this_month);
     setText('kpi-touchpoints', po.touchpoints_total);
-    setText('kpi-phase1-done', po.phase1_signed_off_total);
+    setText('kpi-workshops-scheduled', po.workshops_scheduled_total);
     setText('kpi-phase2-done', po.phase2_completed_total);
 }
 

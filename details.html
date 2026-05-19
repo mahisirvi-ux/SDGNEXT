@@ -17,22 +17,30 @@
 <body class="bg-[#f1f5f9] antialiased h-screen flex flex-col overflow-hidden">
 
     <!-- TOP HEADER BAR -->
-    <div class="bg-[#1a233a] shadow-lg flex-shrink-0">
+        <div class="bg-[#1a233a] shadow-lg flex-shrink-0">
         <div class="px-6 py-3 flex justify-between items-center">
             <div class="flex items-center gap-3">
-                <a href="/" class="text-slate-400 hover:text-white transition-colors">
+                <a href="/" class="text-[11px] font-bold text-slate-400 hover:text-white transition-colors" title="Home">
+                    SDG<span class="text-pink-400">NEXT</span>
+                </a>
+                <span class="text-slate-600">|</span>
+                <a id="detail-back-link" href="/project" class="text-slate-400 hover:text-white transition-colors">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
                 </a>
                 <div>
-                    <p class="text-[10px] text-slate-400 uppercase tracking-wider">Home &gt; Phase 2 &gt; Detail</p>
+                    <p class="text-[10px] text-slate-400 uppercase tracking-wider">Home &gt; Workshop Board &gt; Detail</p>
                     <h1 id="fd-name" class="text-base font-extrabold text-white mt-0.5">Loading...</h1>
                 </div>
             </div>
             <div class="flex items-center gap-2.5">
-                <button id="fd-btn-generate" onclick="generateWUD()" class="flex items-center gap-1.5 bg-white/10 border border-white/20 text-white hover:bg-white/20 text-[11px] font-bold py-2 px-4 rounded-lg transition-all">
-                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
-                    Generate RGT
-                </button>
+                                <button id="fd-btn-generate" onclick="generateWUD()" class="hidden flex items-center gap-1.5 bg-white/10 border border-white/20 text-white hover:bg-white/20 text-[11px] font-bold py-2 px-4 rounded-lg transition-all">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                                    Generate WUD
+                                </button>
+                                <button id="fd-btn-generate-mock" onclick="openGenerateMockModal()" class="hidden flex items-center gap-1.5 bg-white/10 border border-white/20 text-white hover:bg-white/20 text-[11px] font-bold py-2 px-4 rounded-lg transition-all">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 100-4h14a2 2 0 100 4M5 12a2 2 0 110 4h14a2 2 0 110-4"></path></svg>
+                                    Generate Mock
+                                </button>
                 <button id="fd-btn-edit" onclick="toggleDetailsEditMode()" class="flex items-center gap-1.5 bg-pink-500 hover:bg-pink-600 text-white text-[11px] font-bold py-2 px-5 rounded-lg shadow transition-all">
                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
                     Edit Details
@@ -41,7 +49,7 @@
                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
                     Save Changes
                 </button>
-                <a href="/" class="text-slate-400 hover:text-white p-2 rounded-lg hover:bg-white/10 transition-all ml-2">
+                <a id="detail-close-link" href="/project" class="text-slate-400 hover:text-white p-2 rounded-lg hover:bg-white/10 transition-all ml-2">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                 </a>
             </div>
@@ -62,20 +70,16 @@
             <div class="w-10 h-10 rounded-full bg-pink-500 flex items-center justify-center shadow-lg shadow-pink-500/30 mb-2">
                 <span class="text-white text-xs font-black tracking-tight">SN</span>
             </div>
-            <!-- Home -->
+                        <!-- Home -->
             <a href="/" class="w-9 h-9 rounded-full bg-pink-500 flex items-center justify-center shadow-md shadow-pink-500/20 hover:scale-110 transition-transform" title="Home">
                 <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>
             </a>
-            <!-- Phase 1 -->
-            <a href="/" onclick="localStorage.setItem('activePhase','1')" class="w-9 h-9 flex items-center justify-center rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-all" title="Phase 1 - Functional">
-                <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
-            </a>
-            <!-- Phase 2 (Active) -->
-            <a href="/" onclick="localStorage.setItem('activePhase','2')" class="w-9 h-9 flex items-center justify-center rounded-lg bg-white/10 text-white border border-white/20 transition-all" title="Phase 2 - Technical">
+                        <!-- Workshop Board (Active) -->
+            <a href="/project" onclick="localStorage.setItem('activePhase','2')" class="nav-project-link w-9 h-9 flex items-center justify-center rounded-lg bg-white/10 text-white border border-white/20 transition-all" title="Workshop Board">
                 <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
             </a>
             <!-- Phase 3 -->
-            <a href="/" onclick="localStorage.setItem('activePhase','3')" class="w-9 h-9 flex items-center justify-center rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-all" title="Phase 3 - Deployment">
+            <a href="/project" onclick="localStorage.setItem('activePhase','3')" class="nav-project-link w-9 h-9 flex items-center justify-center rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-all" title="Phase 3 - Deployment">
                 <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"></path></svg>
             </a>
         </div>
@@ -89,7 +93,7 @@
                     Workshop Planning
                 </h3>
 
-                                <!-- Timeline Steps -->
+                                                                <!-- Timeline Steps -->
                 <div class="space-y-0 mb-4">
                     <!-- Step 1: Workshop Scheduled -->
                     <div class="flex gap-3">
@@ -113,36 +117,47 @@
                             <p id="ws-step2-info" class="text-[10px] text-slate-400 mt-0.5">Not started</p>
                         </div>
                     </div>
-                    <!-- Step 3: Discussion Completed -->
+                    <!-- Step 3: In Progress -->
                     <div class="flex gap-3">
                         <div class="flex flex-col items-center">
                             <div id="ws-dot-3" class="w-3 h-3 rounded-full bg-slate-300 flex-shrink-0 mt-0.5"></div>
                             <div class="w-0.5 h-full bg-slate-200 my-0.5"></div>
                         </div>
                         <div class="pb-3">
-                            <p class="text-[11px] font-bold text-[#1a233a]">Discussion Completed</p>
+                            <p class="text-[11px] font-bold text-[#1a233a]">In Progress</p>
                             <p id="ws-step3-info" class="text-[10px] text-slate-400 mt-0.5">Not started</p>
                         </div>
                     </div>
-                    <!-- Step 4: Document Review -->
+                    <!-- Step 4: Discussion Completed -->
                     <div class="flex gap-3">
                         <div class="flex flex-col items-center">
                             <div id="ws-dot-4" class="w-3 h-3 rounded-full bg-slate-300 flex-shrink-0 mt-0.5"></div>
                             <div class="w-0.5 h-full bg-slate-200 my-0.5"></div>
                         </div>
                         <div class="pb-3">
-                            <p class="text-[11px] font-bold text-[#1a233a]">Document Review</p>
+                            <p class="text-[11px] font-bold text-[#1a233a]">Discussion Completed</p>
                             <p id="ws-step4-info" class="text-[10px] text-slate-400 mt-0.5">Not started</p>
                         </div>
                     </div>
-                    <!-- Step 5: Completed -->
+                    <!-- Step 5: Document Review -->
                     <div class="flex gap-3">
                         <div class="flex flex-col items-center">
                             <div id="ws-dot-5" class="w-3 h-3 rounded-full bg-slate-300 flex-shrink-0 mt-0.5"></div>
+                            <div class="w-0.5 h-full bg-slate-200 my-0.5"></div>
+                        </div>
+                        <div class="pb-3">
+                            <p class="text-[11px] font-bold text-[#1a233a]">Document Review</p>
+                            <p id="ws-step5-info" class="text-[10px] text-slate-400 mt-0.5">Not started</p>
+                        </div>
+                    </div>
+                    <!-- Step 6: Completed -->
+                    <div class="flex gap-3">
+                        <div class="flex flex-col items-center">
+                            <div id="ws-dot-6" class="w-3 h-3 rounded-full bg-slate-300 flex-shrink-0 mt-0.5"></div>
                         </div>
                         <div>
                             <p class="text-[11px] font-bold text-[#1a233a]">Completed</p>
-                            <p id="ws-step5-info" class="text-[10px] text-slate-400 mt-0.5">Not started</p>
+                            <p id="ws-step6-info" class="text-[10px] text-slate-400 mt-0.5">Not started</p>
                         </div>
                     </div>
                 </div>
@@ -168,25 +183,18 @@
                     </div>
                 </div>
             </div>
-                <!-- Workshop Date & Attendees -->
-                <div class="grid grid-cols-2 gap-2 pt-3 border-t border-slate-100">
-                    <div>
-                        <p class="text-[9px] font-bold text-slate-400 uppercase">Workshop Date</p>
-                        <input type="date" id="fd-start" disabled class="mt-1 w-full text-[11px] p-1.5 rounded border border-slate-200 disabled:border-slate-200 disabled:bg-slate-50 disabled:font-medium disabled:text-slate-800">
-                    </div>
-                    <div>
-                        <p class="text-[9px] font-bold text-slate-400 uppercase">Attendees</p>
-                        <input type="text" id="fd-attendees" disabled class="mt-1 w-full text-[11px] p-1.5 rounded border border-slate-200 disabled:border-slate-200 disabled:bg-slate-50 disabled:font-medium disabled:text-slate-800" placeholder="Team names">
-                    </div>
-                </div>
-
-                <!-- Hidden fields for time (still needed for backend) -->
+                                <!-- Hidden fields for schedule (still needed for backend) -->
+                <input type="hidden" id="fd-start">
                 <input type="hidden" id="fd-start-time">
                 <input type="hidden" id="fd-end">
                 <input type="hidden" id="fd-end-time">
-                <input type="hidden" id="fd-criticality" value="Medium">
+                                <input type="hidden" id="fd-criticality" value="Medium">
                 <input type="hidden" id="fd-effort">
+                <input type="hidden" id="fd-attendees">
             </div>
+
+            <!-- Deployed Mock Info (populated by JS) -->
+            <div id="mock-info-section" class="hidden"></div>
         </div>
 
         <!-- RIGHT CONTENT AREA -->
@@ -233,9 +241,9 @@
                         <div class="grid grid-cols-1 lg:grid-cols-3 gap-x-6 gap-y-5">
                             <div class="lg:col-span-2"><label class="text-[10px] font-bold text-slate-400 uppercase mb-1.5 block">API Name</label><input type="text" id="fd-api-name" disabled class="w-full text-sm p-2.5 rounded-lg border border-slate-200 disabled:border-transparent disabled:bg-transparent disabled:p-0 disabled:font-bold disabled:text-[#1a233a] transition-all"></div>
                             <div><label class="text-[10px] font-bold text-slate-400 uppercase mb-1.5 block">API Type</label><select id="fd-api-type" disabled class="w-full text-sm p-2.5 rounded-lg border border-slate-200 disabled:appearance-none disabled:border-transparent disabled:bg-transparent disabled:p-0 disabled:font-medium disabled:text-slate-800 transition-all"><option value=""></option><option value="REST">REST</option><option value="SOAP">SOAP</option></select></div>
-                            <div><label class="text-[10px] font-bold text-slate-400 uppercase mb-1.5 block">Owner</label><p id="fd-val-owner" class="text-sm font-medium text-slate-800">-</p></div>
-                            <div><label class="text-[10px] font-bold text-slate-400 uppercase mb-1.5 block">Technical Owner</label><p id="fd-val-tech-owner" class="text-sm font-medium text-slate-800">-</p></div>
-                            <div><label class="text-[10px] font-bold text-slate-400 uppercase mb-1.5 block">Module Owner</label><p id="fd-val-mod-owner" class="text-sm font-medium text-slate-800">-</p></div>
+                                                        <div><label class="text-[10px] font-bold text-slate-400 uppercase mb-1.5 block">Owner</label><p id="fd-val-owner" class="text-sm font-medium text-slate-800">-</p><p id="fd-val-owner-dept" class="text-[10px] text-indigo-500 font-medium mt-0.5"></p></div>
+                            <div><label class="text-[10px] font-bold text-slate-400 uppercase mb-1.5 block">Technical Owner</label><p id="fd-val-tech-owner" class="text-sm font-medium text-slate-800">-</p><p id="fd-val-tech-owner-dept" class="text-[10px] text-indigo-500 font-medium mt-0.5"></p></div>
+                            <div><label class="text-[10px] font-bold text-slate-400 uppercase mb-1.5 block">Module Owner</label><p id="fd-val-mod-owner" class="text-sm font-medium text-slate-800">-</p><p id="fd-val-mod-owner-dept" class="text-[10px] text-indigo-500 font-medium mt-0.5"></p></div>
                             <div class="lg:col-span-3"><label class="text-[10px] font-bold text-slate-400 uppercase mb-1.5 block">Business Flow</label><p id="fd-val-flow" class="text-sm text-slate-700 leading-relaxed">-</p></div>
                             <div class="lg:col-span-3"><label class="text-[10px] font-bold text-slate-400 uppercase mb-1.5 block">Fallback</label><p id="fd-val-fallback" class="text-sm font-medium text-slate-600">-</p></div>
                         </div>
@@ -394,7 +402,77 @@
 
     </div>
 
-        <script src="/js/details.js?v=12"></script>
+    <!-- Generate Mock: Pre-fill Modal -->
+    <div id="mock-create-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+        <div class="bg-white rounded-xl shadow-2xl w-[560px] p-6">
+            <h3 class="text-sm font-bold text-[#1a233a] mb-4">Create Mock Service</h3>
+            <p class="text-[11px] text-slate-500 mb-4">Pre-filled from this touchpoint's technical details. Review and adjust before creating.</p>
+            <div class="space-y-3">
+                <div>
+                    <label class="text-[10px] uppercase tracking-wider text-slate-500 font-bold">Method Name (URL Path)</label>
+                    <input type="text" id="mock-method-name" class="w-full text-sm border border-slate-200 rounded-md px-3 py-2 mt-1 font-mono" placeholder="e.g., customer/details">
+                    <p class="text-[10px] text-slate-400 mt-1">Mock will be accessible at <span class="font-mono">/mock-api/&lt;method-name&gt;</span></p>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="text-[10px] uppercase tracking-wider text-slate-500 font-bold">HTTP Method</label>
+                        <select id="mock-http-method" class="w-full text-sm border border-slate-200 rounded-md px-3 py-2 mt-1">
+                            <option value="POST">POST</option>
+                            <option value="GET">GET</option>
+                            <option value="PUT">PUT</option>
+                            <option value="DELETE">DELETE</option>
+                            <option value="PATCH">PATCH</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="text-[10px] uppercase tracking-wider text-slate-500 font-bold">Status Code</label>
+                        <input type="number" id="mock-status-code" value="200" class="w-full text-sm border border-slate-200 rounded-md px-3 py-2 mt-1">
+                    </div>
+                </div>
+                <div>
+                    <label class="text-[10px] uppercase tracking-wider text-slate-500 font-bold">Content Type</label>
+                    <select id="mock-content-type" class="w-full text-sm border border-slate-200 rounded-md px-3 py-2 mt-1">
+                        <option value="application/json">application/json</option>
+                        <option value="application/xml">application/xml</option>
+                        <option value="text/plain">text/plain</option>
+                        <option value="text/html">text/html</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="text-[10px] uppercase tracking-wider text-slate-500 font-bold">Response Payload</label>
+                    <textarea id="mock-payload" rows="8" class="w-full text-xs border border-slate-200 rounded-md px-3 py-2 mt-1 font-mono" placeholder='{"status": "SUCCESS"}'></textarea>
+                </div>
+            </div>
+            <div id="mock-create-error" class="hidden mt-3 text-xs text-red-600 bg-red-50 border border-red-200 rounded-md px-3 py-2"></div>
+            <div class="flex justify-end gap-2 mt-5">
+                <button onclick="closeMockCreateModal()" class="text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 px-4 py-2 rounded-md">Cancel</button>
+                <button onclick="submitMockCreate()" id="mock-create-submit-btn" class="text-xs font-bold text-white bg-pink-500 hover:bg-pink-600 px-4 py-2 rounded-md">Create Mock</button>
+            </div>
+        </div>
+    </div>
+
+        <!-- Generate Mock: Success Modal -->
+    <div id="mock-success-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+        <div class="bg-white rounded-xl shadow-2xl w-[480px] p-6">
+            <div class="flex items-center gap-2 mb-4">
+                <svg class="w-5 h-5 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                <h3 class="text-sm font-bold text-[#1a233a]">Mock Created Successfully</h3>
+            </div>
+            <p class="text-xs text-slate-500 mb-1">Your mock is live at:</p>
+            <p id="mock-success-method" class="text-[10px] font-mono text-indigo-600 font-bold mb-3"></p>
+            <div class="flex items-center gap-2 mb-4 bg-slate-50 border border-slate-200 rounded-md px-3 py-2">
+                <span id="mock-success-url" class="flex-1 text-xs font-mono text-slate-700 break-all"></span>
+                <button onclick="copyMockUrl()" class="text-[10px] font-bold text-pink-600 bg-pink-50 hover:bg-pink-100 px-2 py-1 rounded">Copy</button>
+            </div>
+            <p id="mock-copy-feedback" class="text-[10px] text-emerald-600 mb-3 h-3"></p>
+            <div class="flex justify-end gap-2">
+                <a id="mock-success-test-link" href="#" target="_blank" rel="noopener" class="text-xs font-bold text-pink-600 bg-white border border-pink-200 hover:bg-pink-50 px-4 py-2 rounded-md">Test in Browser</a>
+                <button onclick="closeMockSuccessModal()" class="text-xs font-bold text-white bg-slate-700 hover:bg-slate-800 px-4 py-2 rounded-md">Close</button>
+            </div>
+        </div>
+    </div>
+
+        <script src="/js/details.js?v=17"></script>
     <script src="/js/mom.js?v=1"></script>
     <script src="/js/followups.js?v=1"></script>
 </body>

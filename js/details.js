@@ -39,9 +39,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     try {
         const response = await fetch(`/api/phase2/touchpoint/${id}`);
         const result = await response.json();
-        if (response.ok && result.status === "success") {
+                if (response.ok && result.status === "success") {
             currentData = result.data;
             populatePage(currentData);
+            loadMockInfo(currentData.id);
         } else {
             alert("Error: " + (result.message || "Unknown error"));
             window.location.href = "/";
@@ -59,6 +60,17 @@ function populatePage(tp) {
     document.getElementById('fd-id').value = tp.id;
     document.getElementById('fd-integration-type').value = tp.integration || 'unassigned';
 
+    // Update navigation links with project context
+    // (back-arrow, close-icon, phase nav all point to this touchpoint's project)
+    if (tp.project_id) {
+        const projectUrl = `/project?id=${tp.project_id}`;
+        const backLink = document.getElementById('detail-back-link');
+        const closeLink = document.getElementById('detail-close-link');
+        if (backLink) backLink.href = projectUrl;
+        if (closeLink) closeLink.href = projectUrl;
+        document.querySelectorAll('.nav-project-link').forEach(a => a.href = projectUrl);
+    }
+
     // Header
     document.getElementById('fd-name').innerText = tp.name;
 
@@ -68,11 +80,38 @@ function populatePage(tp) {
     document.getElementById('fd-strip-target').innerText = tp.target || '-';
     document.getElementById('fd-strip-integration').innerText = (tp.integration || 'Unassigned').toUpperCase();
 
-    // Basic Info: Profile fields
+        // Basic Info: Profile fields
     document.getElementById('fd-val-flow').innerText = tp.business_flow || '-';
-    document.getElementById('fd-val-owner').innerText = tp.owner || '-';
-    document.getElementById('fd-val-tech-owner').innerText = tp.tech_owner_name || '-';
-    document.getElementById('fd-val-mod-owner').innerText = tp.mod_owner || '-';
+
+    // Owner fields with department displayed below
+    const ownerName = tp.owner || '-';
+    const ownerDisplay = tp.owner_display || ownerName;
+    document.getElementById('fd-val-owner').innerText = ownerName;
+    const ownerDeptEl = document.getElementById('fd-val-owner-dept');
+    if (ownerDeptEl) {
+        // Extract department from enriched label like "Rahul (CBS)" → "CBS"
+        const ownerDeptMatch = ownerDisplay.match(/\(([^)]+)\)/);
+        ownerDeptEl.innerText = ownerDeptMatch ? ownerDeptMatch[1] : '';
+    }
+
+    const techOwnerName = tp.tech_owner_name || '-';
+    const techOwnerDisplay = tp.tech_owner_display || techOwnerName;
+    document.getElementById('fd-val-tech-owner').innerText = techOwnerName;
+    const techOwnerDeptEl = document.getElementById('fd-val-tech-owner-dept');
+    if (techOwnerDeptEl) {
+        const techDeptMatch = techOwnerDisplay.match(/\(([^)]+)\)/);
+        techOwnerDeptEl.innerText = techDeptMatch ? techDeptMatch[1] : '';
+    }
+
+    const modOwnerName = tp.mod_owner || '-';
+    const modOwnerDisplay = tp.mod_owner_display || modOwnerName;
+    document.getElementById('fd-val-mod-owner').innerText = modOwnerName;
+    const modOwnerDeptEl = document.getElementById('fd-val-mod-owner-dept');
+    if (modOwnerDeptEl) {
+        const modDeptMatch = modOwnerDisplay.match(/\(([^)]+)\)/);
+        modOwnerDeptEl.innerText = modDeptMatch ? modDeptMatch[1] : '';
+    }
+
     document.getElementById('fd-val-fallback').innerText = tp.fallback || 'None';
 
     // Left Panel: Schedule
@@ -90,13 +129,36 @@ function populatePage(tp) {
     setVal('fd-effort', td.effort || "");
     setVal('fd-attendees', td.attendees || "");
 
-    // Status & Pending With
+        // Status & Pending With
     setVal('fd-tech-status', tp.techStatus || "Pending Workshop");
     setVal('fd-pending-with', tp.pendingWith || td.pendingWith || "");
 
-    // Workshop Planning Timeline
-    const wsStatus = td.workshopStage || determineWorkshopStage(tp);
+    // Workshop Planning Timeline — status synced with the timeline
+    const wsStatus = determineWorkshopStage(tp);
     updateWorkshopTimeline(wsStatus, tp);
+
+        // Show/hide Generate WUD and Generate Mock buttons based on Completed status
+        const isCompleted = (tp.techStatus || '').toLowerCase() === 'completed';
+        const generateBtn = document.getElementById('fd-btn-generate');
+        if (generateBtn) {
+            if (isCompleted) {
+                generateBtn.classList.remove('hidden');
+                generateBtn.style.display = 'flex';
+            } else {
+                generateBtn.classList.add('hidden');
+                generateBtn.style.display = '';
+            }
+        }
+        const mockBtn = document.getElementById('fd-btn-generate-mock');
+        if (mockBtn) {
+            if (isCompleted) {
+                mockBtn.classList.remove('hidden');
+                mockBtn.style.display = 'flex';
+            } else {
+                mockBtn.classList.add('hidden');
+                mockBtn.style.display = '';
+            }
+        }
 
         // Load attachments
         loadDocuments(tp.id);
@@ -291,9 +353,18 @@ function determineWorkshopStage(tp) {
     const hasSchedule = tp.start && tp.start !== "-" && tp.start !== "None" && tp.start.trim() !== "";
     const rgtShared = !!td.rgtSharedAt;
 
-    if (techStatus === 'completed') return 5;
-    if (techStatus === 'document review') return 4;
-    if (techStatus === 'pending document') return 3;
+    // 6-step flow:
+    // 1. Workshop Scheduled
+    // 2. RGT Shared
+    // 3. In Progress (start_date <= today)
+    // 4. Discussion Completed (manual: Pending Document status)
+    // 5. Document Review (bank replied with filled RGT)
+    // 6. Completed (manual post document review)
+
+    if (techStatus === 'completed') return 6;
+    if (techStatus === 'document review') return 5;
+    if (techStatus === 'pending document') return 4;
+    if (techStatus === 'in progress') return 3;
     if (rgtShared) return 2;
     if (hasSchedule) return 1;
     return 0;
@@ -301,15 +372,27 @@ function determineWorkshopStage(tp) {
 
 function updateWorkshopTimeline(stage, tp) {
     const td = tp.techDetails || {};
+    const statusDates = td.statusDates || {};
     const startDate = (tp.start && tp.start !== "-" && tp.start !== "None") ? tp.start.split(" ")[0] : '';
     const rgtDate = td.rgtSharedAt ? td.rgtSharedAt.split(" ")[0] : '';
 
+    // Build display text with dates for each step
+    const scheduledDate = statusDates.scheduled || startDate || '';
+    const rgtSharedDate = statusDates.rgtShared || rgtDate || '';
+    const inProgressDate = statusDates.inProgress || '';
+    const discussionDate = statusDates.discussionCompleted || '';
+    const docReviewDate = statusDates.documentReview || '';
+    const completedDate = statusDates.completed || '';
+
+    const fmtDate = (label, d) => d ? `${label} \u00B7 ${d}` : label;
+
     const steps = [
-        { dot: 'ws-dot-1', info: 'ws-step1-info', doneText: 'Scheduled' + (startDate ? ' \u00B7 ' + startDate : '') },
-        { dot: 'ws-dot-2', info: 'ws-step2-info', doneText: 'Sent' + (rgtDate ? ' \u00B7 ' + rgtDate : '') },
-        { dot: 'ws-dot-3', info: 'ws-step3-info', doneText: 'Done \u00B7 Pending Document' },
-        { dot: 'ws-dot-4', info: 'ws-step4-info', doneText: 'Document Received' },
-        { dot: 'ws-dot-5', info: 'ws-step5-info', doneText: 'Completed' },
+        { dot: 'ws-dot-1', info: 'ws-step1-info', doneText: fmtDate('Scheduled', scheduledDate) },
+        { dot: 'ws-dot-2', info: 'ws-step2-info', doneText: fmtDate('RGT Shared', rgtSharedDate) },
+        { dot: 'ws-dot-3', info: 'ws-step3-info', doneText: fmtDate('In Progress', inProgressDate) },
+        { dot: 'ws-dot-4', info: 'ws-step4-info', doneText: fmtDate('Discussion Completed', discussionDate) },
+        { dot: 'ws-dot-5', info: 'ws-step5-info', doneText: fmtDate('Document Received', docReviewDate) },
+        { dot: 'ws-dot-6', info: 'ws-step6-info', doneText: fmtDate('Completed', completedDate) },
     ];
 
         steps.forEach((step, idx) => {
@@ -369,7 +452,242 @@ async function loadDocuments(tpId) {
             countBadge.innerText = '0 files';
             container.innerHTML = '<p class="text-sm text-slate-400 italic">No documents received yet.</p>';
         }
-    } catch (err) {
+        } catch (err) {
         console.error('Failed to load documents:', err);
+    }
+}
+
+// ==========================================
+// GENERATE MOCK: Modal Handlers
+// ==========================================
+
+function openGenerateMockModal() {
+    const tp = currentData;
+    if (!tp) {
+        alert("Touchpoint data not loaded.");
+        return;
+    }
+
+    const td = tp.techDetails || {};
+
+    // Pre-fill method_name from apiName, slugified
+    const apiName = (td.apiName || tp.name || "").trim();
+    const slug = apiName
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "");
+    document.getElementById('mock-method-name').value = slug;
+
+    // Pre-fill HTTP method from apiMethod, default POST
+    const httpMethod = (td.apiMethod || "POST").toUpperCase();
+    const methodSelect = document.getElementById('mock-http-method');
+    if ([...methodSelect.options].some(o => o.value === httpMethod)) {
+        methodSelect.value = httpMethod;
+    } else {
+        methodSelect.value = "POST";
+    }
+
+    // Default 200 status code
+    document.getElementById('mock-status-code').value = 200;
+
+    // Default JSON content type
+    document.getElementById('mock-content-type').value = "application/json";
+
+    // Pre-fill payload from apiRes (success response sample)
+    let payload = (td.apiRes || "").trim();
+    if (!payload) {
+        payload = JSON.stringify({status: "SUCCESS"}, null, 2);
+    }
+    document.getElementById('mock-payload').value = payload;
+
+        // Clear any stale error
+    const errBox = document.getElementById('mock-create-error');
+    errBox.classList.add('hidden');
+    errBox.textContent = "";
+
+    // Update submit button text based on whether mock exists
+    const submitBtn = document.getElementById('mock-create-submit-btn');
+    const mockSection = document.getElementById('mock-info-section');
+    const hasExisting = mockSection && !mockSection.classList.contains('hidden');
+    submitBtn.textContent = hasExisting ? 'Update Mock' : 'Create Mock';
+
+    // Show modal
+    document.getElementById('mock-create-modal').classList.remove('hidden');
+}
+
+function closeMockCreateModal() {
+    document.getElementById('mock-create-modal').classList.add('hidden');
+}
+
+async function submitMockCreate() {
+    const errBox = document.getElementById('mock-create-error');
+    const submitBtn = document.getElementById('mock-create-submit-btn');
+    const methodName = document.getElementById('mock-method-name').value.trim();
+    const httpMethod = document.getElementById('mock-http-method').value;
+    const statusCode = parseInt(document.getElementById('mock-status-code').value, 10);
+    const contentType = document.getElementById('mock-content-type').value;
+    const payload = document.getElementById('mock-payload').value;
+
+    // Client-side validation
+    if (!methodName) {
+        errBox.textContent = "Method name is required.";
+        errBox.classList.remove('hidden');
+        return;
+    }
+    if (isNaN(statusCode) || statusCode < 100 || statusCode > 599) {
+        errBox.textContent = "Status code must be between 100 and 599.";
+        errBox.classList.remove('hidden');
+        return;
+    }
+    if (!payload) {
+        errBox.textContent = "Payload cannot be empty.";
+        errBox.classList.remove('hidden');
+        return;
+    }
+
+    // Disable submit during request
+    submitBtn.disabled = true;
+    const originalText = submitBtn.textContent;
+    submitBtn.textContent = "Creating...";
+    errBox.classList.add('hidden');
+
+    try {
+                const resp = await fetch('/api/mocks/create', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                method_name: methodName,
+                http_method: httpMethod,
+                status_code: statusCode,
+                content_type: contentType,
+                payload: payload,
+                created_by: "User",
+                touchpoint_id: currentData ? currentData.id : null
+            })
+        });
+        const data = await resp.json();
+
+                if (resp.ok) {
+                    closeMockCreateModal();
+                    showMockSuccess(data.mock_url, httpMethod, data.updated);
+                } else {
+            errBox.textContent = data.detail || "Failed to create mock.";
+            errBox.classList.remove('hidden');
+        }
+    } catch (err) {
+        errBox.textContent = "Network error: " + err.message;
+        errBox.classList.remove('hidden');
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = originalText;
+    }
+}
+
+function showMockSuccess(mockUrl, httpMethod, isUpdate) {
+    // mockUrl from API is relative like /mock-api/customer-details
+    const absUrl = window.location.origin + mockUrl;
+    document.getElementById('mock-success-url').textContent = absUrl;
+
+    const testLink = document.getElementById('mock-success-test-link');
+    testLink.href = absUrl;
+    testLink.style.display = '';
+
+    // Show method badge (metadata: what the real API expects)
+    const methodNote = document.getElementById('mock-success-method');
+    if (methodNote) {
+        methodNote.textContent = httpMethod + ' ' + mockUrl + ' (actual API method)';
+    }
+
+    // Update title based on create vs update
+    const titleEl = document.querySelector('#mock-success-modal h3');
+    if (titleEl) {
+        titleEl.textContent = isUpdate ? 'Mock Updated Successfully' : 'Mock Created Successfully';
+    }
+
+    document.getElementById('mock-copy-feedback').textContent = "";
+    document.getElementById('mock-success-modal').classList.remove('hidden');
+}
+
+async function copyMockUrl() {
+    const url = document.getElementById('mock-success-url').textContent;
+    try {
+        await navigator.clipboard.writeText(url);
+        const fb = document.getElementById('mock-copy-feedback');
+        fb.textContent = "Copied to clipboard.";
+        setTimeout(() => { fb.textContent = ""; }, 2000);
+    } catch (err) {
+        alert("Could not copy automatically. Please copy manually.");
+    }
+}
+
+function closeMockSuccessModal() {
+    document.getElementById('mock-success-modal').classList.add('hidden');
+    // Refresh mock display after creation
+    if (currentData) loadMockInfo(currentData.id);
+}
+
+// ==========================================
+// DEPLOYED MOCK: Load & Display
+// ==========================================
+
+async function loadMockInfo(tpId) {
+    const container = document.getElementById('mock-info-section');
+    if (!container) return;
+
+    try {
+        const resp = await fetch(`/api/mocks/by-touchpoint/${tpId}`);
+        const data = await resp.json();
+
+        if (data.status === 'success' && data.mock) {
+            const m = data.mock;
+            const absUrl = window.location.origin + m.mock_url;
+            container.innerHTML = `
+                <div class="bg-emerald-50 border border-emerald-200 rounded-lg p-3 mt-4">
+                    <div class="flex items-center gap-2 mb-2">
+                        <div class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
+                        <p class="text-[10px] font-bold text-emerald-700 uppercase tracking-wider">Mock Service Live</p>
+                    </div>
+                    <div class="bg-white border border-emerald-100 rounded-md px-2.5 py-1.5 mb-2">
+                        <p class="text-[11px] font-mono text-slate-700 break-all">${absUrl}</p>
+                    </div>
+                    <div class="flex items-center gap-3 text-[10px] text-slate-500">
+                        <span class="font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">${m.http_method}</span>
+                        <span>Status: ${m.status_code}</span>
+                        <span>${m.content_type}</span>
+                    </div>
+                    <div class="flex items-center gap-2 mt-2">
+                        <a href="${absUrl}" target="_blank" rel="noopener" class="text-[10px] font-bold text-emerald-700 hover:text-emerald-900 underline">Test</a>
+                        <button onclick="copyToClipboard('${absUrl}')" class="text-[10px] font-bold text-slate-500 hover:text-slate-700 underline">Copy URL</button>
+                    </div>
+                </div>
+            `;
+            container.classList.remove('hidden');
+
+            // Update the Generate Mock button text to "Update Mock"
+            const mockBtn = document.getElementById('fd-btn-generate-mock');
+            if (mockBtn) {
+                mockBtn.innerHTML = `<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 100-4h14a2 2 0 100 4M5 12a2 2 0 110 4h14a2 2 0 110-4"></path></svg> Update Mock`;
+            }
+        } else {
+            container.innerHTML = '';
+            container.classList.add('hidden');
+
+            // Reset button text to "Generate Mock"
+            const mockBtn = document.getElementById('fd-btn-generate-mock');
+            if (mockBtn) {
+                mockBtn.innerHTML = `<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 100-4h14a2 2 0 100 4M5 12a2 2 0 110 4h14a2 2 0 110-4"></path></svg> Generate Mock`;
+            }
+        }
+    } catch (err) {
+        console.error('Failed to load mock info:', err);
+    }
+}
+
+async function copyToClipboard(text) {
+    try {
+        await navigator.clipboard.writeText(text);
+        alert('Copied!');
+    } catch (err) {
+        alert('Could not copy. Please copy manually: ' + text);
     }
 }

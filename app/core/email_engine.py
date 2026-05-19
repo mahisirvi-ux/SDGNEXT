@@ -1,13 +1,9 @@
 import smtplib
 import re
-import csv
-from io import StringIO
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from email.mime.application import MIMEApplication
-from app.core.ai_agent import generate_stakeholder_intro
 from app.core.database import SessionLocal
-from app.models.domain import IDRFunctional, IntegrationTouchpoint, TeamMaster, IDRActionLog
+from app.models.domain import IntegrationTouchpoint, IDRTechnical, FollowUpItem
 from datetime import datetime, date, timedelta
 
 # --- CONFIGURATION ---
@@ -57,15 +53,38 @@ def _render_nudge_html(owner_display: str, items: list) -> str:
     )
 
 def generate_and_send_daily_summary():
-    """Queries the database and sends the daily executive summary."""
+    """Queries the database and sends the daily executive summary.
+
+    Metrics (post single-stage-workflow):
+    - Workshops Scheduled: IDRTechnical rows with tech_status='Scheduled'
+    - Workshops Completed: IDRTechnical rows with tech_status='Completed'
+    - Open Follow-ups: FollowUpItem rows with status='OPEN'
+    - Overdue Follow-ups: Open items where due_date < today
+    """
     db = SessionLocal()
     try:
-        total = db.query(IDRFunctional).count()
-        signed_off = db.query(IDRFunctional).filter(IDRFunctional.idr_status.ilike("%Signed-Off%")).count()
-        pending = db.query(IDRFunctional).filter(IDRFunctional.idr_status.ilike("%Pending%")).count()
-        in_progress = total - signed_off - pending
+        from sqlalchemy import func as sqla_func
 
+        today = date.today()
         today_str = datetime.now().strftime("%B %d, %Y")
+
+        scheduled = db.query(sqla_func.count(IDRTechnical.id)).filter(
+            IDRTechnical.tech_status == "Scheduled"
+        ).scalar() or 0
+
+        completed = db.query(sqla_func.count(IDRTechnical.id)).filter(
+            IDRTechnical.tech_status == "Completed"
+        ).scalar() or 0
+
+        open_fus = db.query(sqla_func.count(FollowUpItem.id)).filter(
+            FollowUpItem.status == "OPEN"
+        ).scalar() or 0
+
+        overdue_fus = db.query(sqla_func.count(FollowUpItem.id)).filter(
+            FollowUpItem.status == "OPEN",
+            FollowUpItem.due_date < today,
+            FollowUpItem.due_date.isnot(None)
+        ).scalar() or 0
 
         html_content = f"""
         <html>
@@ -76,31 +95,31 @@ def generate_and_send_daily_summary():
                         <p style="color: #94a3b8; font-size: 12px; margin-top: 5px; text-transform: uppercase;">Daily Command Center Report</p>
                     </div>
                     <div style="padding: 30px;">
-                        <h3 style="margin-top: 0; color: #334155;">Project Phase 1: Functional Discovery</h3>
-                        <p style="color: #64748b; font-size: 14px;">Here is the end-of-day health check for all integration touchpoints as of <strong>{today_str}</strong>.</p>
+                        <h3 style="margin-top: 0; color: #334155;">Technical Delivery Snapshot</h3>
+                        <p style="color: #64748b; font-size: 14px;">Here is the end-of-day delivery status across all integration touchpoints as of <strong>{today_str}</strong>.</p>
                         
                         <table style="width: 100%; border-collapse: separate; border-spacing: 10px 0; margin-top: 20px;">
                             <tr>
-                                <td style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 15px; text-align: center; width: 25%;">
-                                    <p style="font-size: 10px; color: #94a3b8; text-transform: uppercase; margin: 0 0 5px 0; font-weight: bold;">Total</p>
-                                    <h2 style="margin: 0; color: #1a233a; font-size: 24px;">{total}</h2>
-                                </td>
-                                <td style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 15px; text-align: center; width: 25%;">
-                                    <p style="font-size: 10px; color: #3b82f6; text-transform: uppercase; margin: 0 0 5px 0; font-weight: bold;">In Progress</p>
-                                    <h2 style="margin: 0; color: #1a233a; font-size: 24px;">{in_progress}</h2>
-                                </td>
-                                <td style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 6px; padding: 15px; text-align: center; width: 25%;">
-                                    <p style="font-size: 10px; color: #f59e0b; text-transform: uppercase; margin: 0 0 5px 0; font-weight: bold;">Pending</p>
-                                    <h2 style="margin: 0; color: #1a233a; font-size: 24px;">{pending}</h2>
+                                <td style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 6px; padding: 15px; text-align: center; width: 25%;">
+                                    <p style="font-size: 10px; color: #0284c7; text-transform: uppercase; margin: 0 0 5px 0; font-weight: bold;">Scheduled</p>
+                                    <h2 style="margin: 0; color: #1a233a; font-size: 24px;">{scheduled}</h2>
                                 </td>
                                 <td style="background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 6px; padding: 15px; text-align: center; width: 25%;">
-                                    <p style="font-size: 10px; color: #10b981; text-transform: uppercase; margin: 0 0 5px 0; font-weight: bold;">Signed-Off</p>
-                                    <h2 style="margin: 0; color: #1a233a; font-size: 24px;">{signed_off}</h2>
+                                    <p style="font-size: 10px; color: #10b981; text-transform: uppercase; margin: 0 0 5px 0; font-weight: bold;">Completed</p>
+                                    <h2 style="margin: 0; color: #1a233a; font-size: 24px;">{completed}</h2>
+                                </td>
+                                <td style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 6px; padding: 15px; text-align: center; width: 25%;">
+                                    <p style="font-size: 10px; color: #f59e0b; text-transform: uppercase; margin: 0 0 5px 0; font-weight: bold;">Open Follow-ups</p>
+                                    <h2 style="margin: 0; color: #1a233a; font-size: 24px;">{open_fus}</h2>
+                                </td>
+                                <td style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 6px; padding: 15px; text-align: center; width: 25%;">
+                                    <p style="font-size: 10px; color: #dc2626; text-transform: uppercase; margin: 0 0 5px 0; font-weight: bold;">Overdue</p>
+                                    <h2 style="margin: 0; color: #1a233a; font-size: 24px;">{overdue_fus}</h2>
                                 </td>
                             </tr>
                         </table>
                         <p style="color: #64748b; font-size: 12px; margin-top: 30px; border-top: 1px solid #e2e8f0; padding-top: 15px;">
-                            <em>To view detailed remarks, open pointers, and specific team bottlenecks, please log in to the SDGNext Dashboard.</em>
+                            <em>To view detailed workshop schedules, follow-ups, and team assignments, please log in to the SDGNext Dashboard.</em>
                         </p>
                     </div>
                 </div>
@@ -127,238 +146,19 @@ def generate_and_send_daily_summary():
         db.close()
 
 
-def generate_and_send_follow_ups():
-    """Finds pending items, generates AI executive intro, and conditionally attaches a CSV sheet.
-
-    Post-identity-refactor behaviour:
-    - pending_with is now an INDIVIDUAL'S NAME (not a team label).
-    - We resolve that name -> (person email, department email) via team_master JOIN
-      department_master. The person is in To, their dept group in CC.
-    - If a name can't be resolved (unmapped legacy data), we fall back to the
-      configured RECIPIENTS list so the email isn't lost during the migration
-            window.
-    """
-    db = SessionLocal()
-    try:
-        # 1. Build a (name_lower, project_id) -> identity lookup.
-        # This ensures follow-ups resolve identity within the correct project context.
-        from app.models.domain import DepartmentMaster
-        identity_rows = db.query(TeamMaster, DepartmentMaster).join(
-            DepartmentMaster, TeamMaster.dept_id == DepartmentMaster.dept_id
-        ).filter(TeamMaster.is_active == True).all()
-
-        # Keyed by (name_lower, project_id) for project-scoped resolution
-        person_lookup = {}
-        for m, d in identity_rows:
-            key = (m.full_name.strip().lower(), d.project_id)
-            person_lookup[key] = {
-                "person_email": m.email,
-                "dept_email": d.department_email,
-                "dept_name": d.department_name,
-                "display_name": m.full_name,
-                "project_id": d.project_id,
-            }
-
-        # 2. Fetch items that are Pending and assigned
-        stuck_items = db.query(IDRFunctional, IntegrationTouchpoint).join(
-            IntegrationTouchpoint, IDRFunctional.touchpoint_id == IntegrationTouchpoint.id
-        ).filter(
-            IDRFunctional.idr_status.ilike("%Pending%"),
-            IDRFunctional.pending_with.isnot(None),
-            IDRFunctional.pending_with != ""
-        ).all()
-
-        if not stuck_items:
-            print(f"[{datetime.now()}] No pending items found. Skipping follow-ups.")
-            return
-
-        # 3. Group items by the person they're pending with + project context
-        grouped_tasks = {}
-        for func, tp in stuck_items:
-            person = (func.pending_with or "").strip()
-            if not person:
-                continue
-            # Use (name, project_id) as key for project-scoped grouping
-            project_id = tp.project_id
-            key = (person.lower(), project_id)
-            if key not in grouped_tasks:
-                grouped_tasks[key] = {"display": person, "project_id": project_id, "items": []}
-
-            # Fetch ONLY the open pointers from history
-            history_entries = db.query(IDRActionLog).filter(
-                IDRActionLog.touchpoint_id == tp.id
-            ).order_by(IDRActionLog.created_at.desc()).limit(5).all()
-
-            pointers_html = "<ul style='margin: 0; padding-left: 15px; font-size: 13px; color: #334155; line-height: 1.5;'>"
-            pointers_plain = ""
-            has_pointers = False
-
-            if history_entries:
-                for record in history_entries:
-                    date_str = record.created_at.strftime("%b %d") if record.created_at else "Unknown Date"
-                    pointer = record.open_pointer_history.strip() if record.open_pointer_history else ""
-
-                    if pointer:
-                        pointers_html += f"<li style='margin-bottom: 6px;'><strong>[{date_str}]</strong> {pointer}</li>"
-                        pointers_plain += f"[{date_str}] {pointer}\n"
-                        has_pointers = True
-
-            pointers_html += "</ul>"
-
-            if not has_pointers:
-                fallback = func.open_pointers or 'No specific action items.'
-                pointers_html = f"<em style='color: #64748b;'>{fallback}</em>"
-                pointers_plain = fallback
-
-            grouped_tasks[key]["items"].append({
-                "touchpoint": tp.name or "Unnamed",
-                "module": func.module or "-",
-                "pointers": pointers_html,
-                "pointers_plain": pointers_plain.strip(),
-                "ai_summary": pointers_plain,
-            })
-
-        # 4. Send the emails with THRESHOLD LOGIC (> 2 items = CSV Attachment)
-        for person_key, group in grouped_tasks.items():
-            person_display = group["display"]
-            items = group["items"]
-            project_id = group["project_id"]
-
-            # Resolve to (To, Cc) emails using project-scoped lookup.
-            # person_key is now (name_lower, project_id) tuple.
-            identity = person_lookup.get(person_key)
-            if identity:
-                to_email = identity["person_email"]
-                cc_email = identity["dept_email"]
-                dept_name = identity["dept_name"]
-                greet_name = identity["display_name"]
-            else:
-                # Fallback: an unmapped legacy name. Don't drop the email — send to
-                # the global RECIPIENTS list so somebody sees it.
-                print(f"[{datetime.now()}] WARNING: pending_with name '{person_display}' "
-                      f"not found in team_master for project_id={project_id}. Falling back to global RECIPIENTS.")
-                to_email = RECIPIENTS[0] if RECIPIENTS else SMTP_USERNAME
-                cc_email = None
-                dept_name = "Unassigned"
-                greet_name = person_display
-
-            # Generate the Stakeholder Paragraph
-            executive_narrative = generate_stakeholder_intro(greet_name, items)
-
-            csv_data = None
-            cards_html = ""
-
-            # --- THRESHOLD LOGIC ---
-            if len(items) > 2:
-                # Build the CSV file in server memory
-                csv_file = StringIO()
-                writer = csv.writer(csv_file)
-                writer.writerow(["Touchpoint Name", "Module", "Action Required (Open Pointers)"])
-                
-                for item in items:
-                    writer.writerow([item['touchpoint'], item['module'], item['pointers_plain']])
-                
-                csv_data = csv_file.getvalue()
-                csv_file.close()
-
-                cards_html = f"""
-                <div style="background-color: #fffbeb; border-left: 4px solid #f59e0b; padding: 16px 20px; border-radius: 6px; margin-top: 20px;">
-                    <div style="font-weight: bold; color: #b45309; font-size: 14px; margin-bottom: 6px;">📎 Detailed Action List Attached</div>
-                    <div style="color: #92400e; font-size: 14px; line-height: 1.5;">
-                        Due to the volume of pending items (<strong>{len(items)} items</strong>), we have condensed the technical action points into the attached spreadsheet. Please review the attached file for detailed open pointers.
-                    </div>
-                </div>
-                """
-            else:
-                for item in items:
-                    cards_html += f"""
-                    <div style="border: 1px solid #cbd5e1; border-radius: 6px; margin-bottom: 20px; background-color: #ffffff; overflow: hidden;">
-                        <div style="background-color: #f1f5f9; padding: 12px 20px; border-bottom: 1px solid #cbd5e1;">
-                            <h3 style="margin: 0; color: #0f172a; font-size: 16px;">
-                                {item['touchpoint']} <span style="float: right; color: #64748b; font-size: 13px; font-weight: normal; margin-top: 2px;">Module: {item['module']}</span>
-                            </h3>
-                        </div>
-                        <div style="padding: 20px;">
-                            <strong style="color: #ea580c; text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px;">Action Required (Open Pointers)</strong>
-                            <div style="margin-top: 10px;">{item['pointers']}</div>
-                        </div>
-                    </div>
-                    """
-
-            html_content = f"""
-            <html>
-                <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #1e293b; background-color: #f8fafc; padding: 30px 10px; margin: 0;">
-                    <div style="max-width: 700px; margin: 0 auto; background: white; border-radius: 10px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); border-top: 4px solid #3b82f6;">
-                        
-                        <div style="padding: 35px 40px;">
-                            <h2 style="margin: 0 0 20px 0; color: #0f172a; font-size: 22px;">Integration Review Required</h2>
-                            
-                            <div style="color: #334155; font-size: 15px; line-height: 1.6; margin-bottom: 30px;">
-                                {executive_narrative}
-                            </div>
-                            
-                            {cards_html}
-                            
-                            <div style="margin-top: 35px; text-align: center;">
-                                <a href="http://127.0.0.1:8000" style="background-color: #0f172a; color: white; text-decoration: none; padding: 12px 26px; border-radius: 6px; font-size: 14px; font-weight: 600; display: inline-block;">Open Command Center</a>
-                            </div>
-                        </div>
-                        
-                        <div style="background-color: #f1f5f9; padding: 15px; text-align: center; border-top: 1px solid #e2e8f0;">
-                            <p style="color: #94a3b8; font-size: 12px; margin: 0;">Automated briefing via <strong>SDGNext Platform</strong>.</p>
-                        </div>
-                    </div>
-                </body>
-            </html>
-            """
-
-            msg = MIMEMultipart("mixed")
-            msg["Subject"] = f"⚠️ Action Required: {len(items)} Items Pending Your Review"
-            msg["From"] = SMTP_USERNAME
-            msg["To"] = to_email
-            if cc_email and cc_email.lower() != (to_email or "").lower():
-                msg["Cc"] = cc_email
-
-            msg.attach(MIMEText(html_content, "html"))
-
-            if csv_data:
-                safe_name = (person_display or "person").replace(" ", "_").replace("/", "_")
-                attachment = MIMEApplication(csv_data.encode('utf-8'))
-                attachment.add_header(
-                    'Content-Disposition', 'attachment',
-                    filename=f"{safe_name}_Pending_Actions.csv"
-                )
-                msg.attach(attachment)
-
-            # Build the actual delivery list (To + CC; smtplib needs all envelope recipients)
-            envelope_recipients = [to_email]
-            if cc_email and cc_email.lower() != (to_email or "").lower():
-                envelope_recipients.append(cc_email)
-
-            with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
-                server.starttls()
-                server.login(SMTP_USERNAME, SMTP_PASSWORD)
-                server.sendmail(SMTP_USERNAME, envelope_recipients, msg.as_string())
-
-            print(f"[{datetime.now()}] Follow-up sent to {person_display} "
-                  f"({dept_name}) for {len(items)} items.")
-
-    except Exception as e:
-                print(f"[{datetime.now()}] Failed to send follow-ups: {e}")
-    finally:
-        db.close()
 
 
 def send_followup_nudges():
-    """Sends daily follow-up nudge emails for ALL open items per owner.
+    """Sends daily follow-up nudge emails for MANUAL (non-MoM) open items per owner.
+
+    Scope: Only FollowUpItem rows where source_mom_entry_id IS NULL.
+    MoM-spawned follow-ups are handled by send_mom_pointer_nudges()
+    which groups per-touchpoint and threads onto the original MoM email.
 
     Behavior:
-    - Every day: include ALL open follow-ups for each owner (no due-date gating).
-    - Throttle: once per day via last_nudged_at (prevents same-day duplicates).
-    - Threading: uses a fixed subject per (owner, project) so subsequent days'
-      emails land in the same thread. Uses In-Reply-To/References headers with
-      a deterministic Message-ID pattern.
-    - If new items were added since yesterday, they appear in today's email.
+    - Every day: include ALL open manual follow-ups for each owner.
+    - Throttle: once per day via last_nudged_at.
+    - Threading: fixed subject per (owner, project).
     - Closed items drop out automatically.
     """
     from app.models.domain import FollowUpItem, DepartmentMaster, Project
@@ -370,30 +170,31 @@ def send_followup_nudges():
         today = date.today()
         print(f"[{datetime.now()}] Running follow-up nudge job...")
 
-        # Fetch ALL open follow-ups with their touchpoint
+        # Fetch open MANUAL follow-ups only (source_mom_entry_id IS NULL)
         open_items = db.query(FollowUpItem, IntegrationTouchpoint).join(
             IntegrationTouchpoint, FollowUpItem.touchpoint_id == IntegrationTouchpoint.id
-        ).filter(FollowUpItem.status == "OPEN").all()
+        ).filter(
+            FollowUpItem.status == "OPEN",
+            FollowUpItem.source_mom_entry_id.is_(None)
+        ).all()
 
         if not open_items:
             print(f"[{datetime.now()}] No open follow-ups. Skipping nudges.")
             return
 
-        # Group ALL open items by (owner_lower, project_id)
-        # Skip items with no owner or already nudged today
+        # Group by (owner_lower, project_id)
         grouped = {}
         for fu, tp in open_items:
             if not fu.owner or not fu.owner.strip():
                 continue
-            # Throttle: skip if already nudged today
             if fu.last_nudged_at and fu.last_nudged_at >= today:
                 continue
 
             key = (fu.owner.strip().lower(), tp.project_id)
             if key not in grouped:
-                grouped[key] = {"owner": fu.owner, "project_id": tp.project_id, "items": [], "fu_objects": []}
+                grouped[key] = {"owner": fu.owner, "project_id": tp.project_id,
+                                "items": [], "fu_objects": []}
 
-            # Determine urgency label for display
             if fu.due_date:
                 if fu.due_date == today:
                     urgency = "Due today"
@@ -428,23 +229,17 @@ def send_followup_nudges():
             items = group["items"]
             fu_objects = group["fu_objects"]
 
-            # Resolve recipient
             to_email, cc_email, display = resolve_member_email_and_cc(
                 db, owner_name, project_id=project_id
             )
             if not to_email:
                 skipped.append(owner_name)
-                print(f"[{datetime.now()}] Nudge skipped: '{owner_name}' unresolved in project {project_id}")
                 continue
 
-            # Resolve project name for subject
             project = db.query(Project).filter(Project.id == project_id).first()
             project_name = project.project_name if project else "Project"
 
-            # Generate templated content
             nudge_body = _render_nudge_html(display or owner_name, items)
-
-            # Branded wrapper
             today_str = datetime.now().strftime("%B %d, %Y")
             final_html = (
                 "<html><body style='font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;"
@@ -462,9 +257,6 @@ def send_followup_nudges():
                 "</div></body></html>"
             )
 
-            # Threading: use a fixed subject so all nudges for this owner+project
-            # land in the same email thread. Generate a deterministic thread ID
-            # for In-Reply-To/References headers.
             thread_subject = f"Follow-Up: Open Action Items - {project_name} [{owner_name}]"
             thread_seed = f"sdgnext-followup-{project_id}-{owner_name.lower().strip()}"
             thread_id = f"<{hashlib.md5(thread_seed.encode()).hexdigest()}@sdgnext.local>"
@@ -475,7 +267,6 @@ def send_followup_nudges():
             msg["To"] = to_email
             if cc_email and cc_email.lower() != to_email.lower():
                 msg["Cc"] = cc_email
-            # Thread headers: every email references the same thread_id
             msg["In-Reply-To"] = thread_id
             msg["References"] = thread_id
             msg.attach(MIMEText(final_html, "html"))
@@ -490,12 +281,12 @@ def send_followup_nudges():
                     server.login(SMTP_USERNAME, SMTP_PASSWORD)
                     server.sendmail(SMTP_USERNAME, envelope, msg.as_string())
 
-                # Update last_nudged_at for all items included
                 for fu in fu_objects:
                     fu.last_nudged_at = today
                 db.commit()
                 sent_count += 1
-                print(f"[{datetime.now()}] Nudge sent to {owner_name} ({to_email}) for {len(items)} open item(s).")
+                print(f"[{datetime.now()}] Nudge sent to {owner_name} ({to_email}) "
+                      f"for {len(items)} open item(s).")
             except Exception as mail_err:
                 print(f"[{datetime.now()}] Failed to send nudge to {owner_name}: {mail_err}")
 
@@ -503,5 +294,310 @@ def send_followup_nudges():
 
     except Exception as e:
         print(f"[{datetime.now()}] Follow-up nudge job FAILED: {e}")
+    finally:
+        db.close()
+
+
+def _resolve_mom_nudge_recipients(db, touchpoint_id, project_id):
+    """Resolve recipients for a touchpoint's MoM-pointer nudge.
+
+    Mirrors the same identity logic as send_touchpoint_mom:
+    pending_with, owner, technical_owner from IDRFunctional + IDRTechnical.
+    """
+    from app.models.domain import IDRFunctional, IDRTechnical
+    from app.services.identity_validator import resolve_member_email_and_cc
+
+    func = db.query(IDRFunctional).filter(
+        IDRFunctional.touchpoint_id == touchpoint_id
+    ).first()
+    tech = db.query(IDRTechnical).filter(
+        IDRTechnical.touchpoint_id == touchpoint_id
+    ).first()
+
+    to_emails = []
+    cc_emails = []
+    seen_names = set()
+
+    candidates = []
+    if func:
+        candidates.extend([func.pending_with, func.owner, func.technical_owner])
+    if tech:
+        candidates.append(getattr(tech, "pending_with", None))
+
+    for name in candidates:
+        if not name or not name.strip():
+            continue
+        name_norm = name.strip().lower()
+        if name_norm in seen_names:
+            continue
+        seen_names.add(name_norm)
+        to_email, cc_email, _ = resolve_member_email_and_cc(
+            db, name.strip(), project_id=project_id
+        )
+        if to_email and to_email not in to_emails:
+            to_emails.append(to_email)
+        if cc_email and cc_email not in cc_emails and cc_email not in to_emails:
+            cc_emails.append(cc_email)
+
+    return to_emails, cc_emails
+
+
+def _render_mom_pointer_html(tp_name, items_display):
+    """Render the MoM-pointer nudge email body with urgency coloring."""
+    rows = ""
+    for item in items_display:
+        urgency = item.get("urgency", "")
+        if "Overdue" in urgency:
+            border_color = "#dc2626"
+            text_color = "#dc2626"
+        elif "Due today" in urgency:
+            border_color = "#d97706"
+            text_color = "#d97706"
+        else:
+            border_color = "#e2e8f0"
+            text_color = "#64748b"
+        rows += (
+            f'<tr style="border-left:3px solid {border_color};">'
+            f'<td style="border:1px solid #e2e8f0;padding:8px 10px;">{item.get("description", "")}</td>'
+            f'<td style="border:1px solid #e2e8f0;padding:8px 10px;">{item.get("action", "")}</td>'
+            f'<td style="border:1px solid #e2e8f0;padding:8px 10px;">{item.get("owner", "")}</td>'
+            f'<td style="border:1px solid #e2e8f0;padding:8px 10px;">{item.get("due_date", "--")}</td>'
+            f'<td style="border:1px solid #e2e8f0;padding:8px 10px;color:{text_color};font-weight:bold;">{urgency}</td>'
+            f'</tr>'
+        )
+
+    return (
+        f"<p style='margin:0 0 12px;'>Hello Team,</p>"
+        f"<p style='margin:0 0 16px;'>Friendly reminder &mdash; the following "
+        f"<strong>{len(items_display)}</strong> MoM action item(s) for "
+        f"<strong>{tp_name}</strong> are still OPEN. "
+        f"Please update on resolution when possible.</p>"
+        f"<table style='border-collapse:collapse;width:100%;font-size:13px;'>"
+        f"<thead><tr style='background:#f1f5f9;'>"
+        f"<th style='border:1px solid #e2e8f0;padding:8px 10px;text-align:left;'>Description</th>"
+        f"<th style='border:1px solid #e2e8f0;padding:8px 10px;text-align:left;'>Action</th>"
+        f"<th style='border:1px solid #e2e8f0;padding:8px 10px;text-align:left;'>Owner</th>"
+        f"<th style='border:1px solid #e2e8f0;padding:8px 10px;text-align:left;'>Due</th>"
+        f"<th style='border:1px solid #e2e8f0;padding:8px 10px;text-align:left;'>Status</th>"
+        f"</tr></thead><tbody>{rows}</tbody></table>"
+        f"<p style='margin:16px 0 0;'>Reply to this email or update the Workshop Board "
+        f"to mark items closed.</p>"
+        f"<p style='margin:4px 0 0;color:#94a3b8;font-size:12px;'>&mdash; SDGNext Automated Nudge</p>"
+    )
+
+
+def _send_mom_pointer_email(db, tp, items_display, to_emails, cc_emails, anchor_msg_id):
+    """Compose and send the MoM-pointer nudge email. Returns True on success."""
+    import uuid
+
+    tp_name = tp.name or "Touchpoint"
+    # CRITICAL: subject must match the MoM email subject for Gmail threading.
+    subject = f"MoM: {tp_name}"
+
+    html_body = _render_mom_pointer_html(tp_name, items_display)
+    today_str = datetime.now().strftime("%B %d, %Y")
+
+    final_html = (
+        "<html><body style='font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;"
+        "color:#1e293b;background:#f8fafc;padding:30px;'>"
+        "<div style='max-width:700px;margin:0 auto;background:white;border-radius:8px;"
+        "box-shadow:0 4px 6px rgba(0,0,0,0.05);overflow:hidden;border-top:4px solid #4338ca;'>"
+        f"<div style='padding:30px;'>"
+        f"<h2 style='margin:0 0 10px;color:#0f172a;font-size:18px;'>MoM Action Items Reminder</h2>"
+        f"<p style='color:#64748b;font-size:13px;margin:0 0 20px;'>{tp_name} &mdash; {today_str}</p>"
+        f"<div style='line-height:1.6;font-size:14px;'>{html_body}</div>"
+        f"</div>"
+        "<div style='padding:15px;text-align:center;background:#f8fafc;"
+        "border-top:1px solid #e2e8f0;font-size:11px;color:#94a3b8;'>"
+        "Automated reminder via <strong>SDGNext Command Center</strong></div>"
+        "</div></body></html>"
+    )
+
+    msg_id = f"<mom-nudge-{tp.id}-{uuid.uuid4().hex[:8]}@sdgnext.local>"
+    msg = MIMEMultipart("alternative")
+    msg["Message-ID"] = msg_id
+    msg["Subject"] = subject
+    msg["From"] = SMTP_USERNAME
+    msg["To"] = ", ".join(to_emails)
+    if cc_emails:
+        msg["Cc"] = ", ".join(cc_emails)
+
+    if anchor_msg_id:
+        msg["In-Reply-To"] = anchor_msg_id
+        msg["References"] = anchor_msg_id
+
+    msg.attach(MIMEText(final_html, "html"))
+
+    envelope = list(set(to_emails + cc_emails))
+    if not envelope:
+        return False
+
+    try:
+        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+            server.starttls()
+            server.login(SMTP_USERNAME, SMTP_PASSWORD)
+            server.sendmail(SMTP_USERNAME, envelope, msg.as_string())
+        print(f"[{datetime.now()}] MoM-pointer nudge sent for TP {tp.id} ({tp_name})")
+        return True
+    except Exception as e:
+        print(f"[{datetime.now()}] Failed to send MoM-pointer nudge for TP {tp.id}: {e}")
+        return False
+
+
+def _process_touchpoint_mom_nudge(db, touchpoint_id, today, force=False):
+    """Process MoM-pointer nudge for a single touchpoint.
+
+    Args:
+        db: Active database session (caller manages commit/close).
+        touchpoint_id: The touchpoint to process.
+        today: date object for throttle comparison.
+        force: If True, bypasses the daily last_nudged_at throttle.
+            Used by the dev-phase manual trigger button. In production
+            cron mode (force=False), respects the once-per-day limit.
+
+    Returns:
+        {"sent": bool, "items_count": int, "reason": str}
+        reason: "ok", "no_items", "all_throttled", "no_recipients",
+                "no_anchor_sent_anyway", "send_failed"
+    """
+    from app.models.domain import FollowUpItem, IDRActionLog
+    from app.core.mom_engine import _parse_mom_msg_id
+
+    tp = db.query(IntegrationTouchpoint).filter(
+        IntegrationTouchpoint.id == touchpoint_id
+    ).first()
+    if not tp:
+        return {"sent": False, "items_count": 0, "reason": "no_items"}
+
+    # Fetch open MoM-spawned items for this touchpoint
+    open_items = db.query(FollowUpItem).filter(
+        FollowUpItem.touchpoint_id == touchpoint_id,
+        FollowUpItem.status == "OPEN",
+        FollowUpItem.source_mom_entry_id.isnot(None)
+    ).all()
+
+    if not open_items:
+        return {"sent": False, "items_count": 0, "reason": "no_items"}
+
+    # Apply throttle (skip items already nudged today) unless force=True
+    items_to_nudge = []
+    items_display = []
+    for fu in open_items:
+        if not force and fu.last_nudged_at and fu.last_nudged_at >= today:
+            continue
+        if fu.due_date:
+            if fu.due_date == today:
+                urgency = "Due today"
+            elif fu.due_date < today:
+                days_over = (today - fu.due_date).days
+                urgency = f"Overdue by {days_over} day(s)"
+            else:
+                days_left = (fu.due_date - today).days
+                urgency = f"Due in {days_left} day(s)"
+        else:
+            urgency = "No due date"
+        items_to_nudge.append(fu)
+        items_display.append({
+            "description": fu.description or "",
+            "action": fu.action or "",
+            "owner": fu.owner or "Unassigned",
+            "due_date": fu.due_date.isoformat() if fu.due_date else "\u2014",
+            "urgency": urgency
+        })
+
+    if not items_to_nudge:
+        return {"sent": False, "items_count": 0, "reason": "all_throttled"}
+
+    # Resolve recipients
+    to_emails, cc_emails = _resolve_mom_nudge_recipients(
+        db, touchpoint_id, tp.project_id
+    )
+    if not to_emails and not cc_emails:
+        return {"sent": False, "items_count": len(items_to_nudge),
+                "reason": "no_recipients"}
+
+    # Find earliest MOM_SENT log for threading anchor
+    earliest_mom = db.query(IDRActionLog).filter(
+        IDRActionLog.touchpoint_id == touchpoint_id,
+        IDRActionLog.action_type == "MOM_SENT"
+    ).order_by(IDRActionLog.created_at.asc()).first()
+
+    anchor_msg_id = None
+    if earliest_mom:
+        anchor_msg_id = _parse_mom_msg_id(earliest_mom)
+
+    reason = "ok"
+    if not anchor_msg_id:
+        reason = "no_anchor_sent_anyway"
+        print(f"[{datetime.now()}] TP {touchpoint_id} '{tp.name}': "
+              f"no MoM anchor. Sending as fresh thread.")
+
+    # Send
+    success = _send_mom_pointer_email(
+        db, tp, items_display, to_emails, cc_emails, anchor_msg_id
+    )
+    if not success:
+        return {"sent": False, "items_count": len(items_to_nudge),
+                "reason": "send_failed"}
+
+    # Post-send: update throttle + action log
+    for fu in items_to_nudge:
+        fu.last_nudged_at = today
+    db.add(IDRActionLog(
+        touchpoint_id=touchpoint_id,
+        action_type="MOM_NUDGE_SENT",
+        action_by="System (MoM Nudge)",
+        comment=(
+            f"MoM-pointer nudge: {len(items_to_nudge)} open item(s); "
+            f"recipients={len(to_emails) + len(cc_emails)}"
+        )
+    ))
+
+    return {"sent": True, "items_count": len(items_to_nudge), "reason": reason}
+
+
+def send_mom_pointer_nudges():
+    """Daily cron entry point for MoM-spawned follow-up nudges.
+
+    Iterates all touchpoints with open MoM-spawned items and calls
+    _process_touchpoint_mom_nudge for each. Commits after each
+    successful send.
+    """
+    from app.models.domain import FollowUpItem
+
+    db = SessionLocal()
+    try:
+        today = date.today()
+        print(f"[{datetime.now()}] Running MoM-pointer nudges...")
+
+        # Get distinct touchpoint_ids with open MoM-spawned items
+        tp_ids_rows = db.query(FollowUpItem.touchpoint_id).filter(
+            FollowUpItem.status == "OPEN",
+            FollowUpItem.source_mom_entry_id.isnot(None)
+        ).distinct().all()
+        tp_ids = [r[0] for r in tp_ids_rows]
+
+        if not tp_ids:
+            print(f"[{datetime.now()}] No open MoM-spawned items.")
+            return
+
+        sent_count = 0
+        skipped_count = 0
+
+        for tp_id in tp_ids:
+            result = _process_touchpoint_mom_nudge(db, tp_id, today, force=False)
+            if result["sent"]:
+                sent_count += 1
+                db.commit()
+            else:
+                skipped_count += 1
+
+        print(f"[{datetime.now()}] MoM-pointer nudges: sent={sent_count}, "
+              f"skipped={skipped_count}")
+
+    except Exception as e:
+        print(f"[{datetime.now()}] MoM-pointer nudge job FAILED: {e}")
+        import traceback
+        traceback.print_exc()
     finally:
         db.close()

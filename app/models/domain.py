@@ -44,7 +44,7 @@ class IDRFunctional(Base):
     ux_expectation = Column(String(100))
     business_fallback = Column(Text)
     idr_remarks = Column(Text)
-    idr_status = Column(String(50), default="In-Progress")
+    idr_status = Column(String(50), default="Signed-Off")
 
     inputs = Column(Text)
     expected_output = Column(Text)
@@ -77,9 +77,9 @@ class IDRTechnical(Base):
     __tablename__ = "idr_technical"
 
     id = Column(Integer, primary_key=True, index=True)
-    touchpoint_id = Column(Integer, ForeignKey("integration_touchpoints.id"))
+    touchpoint_id = Column(Integer, ForeignKey("integration_touchpoints.id", ondelete="CASCADE"))
 
-    tech_status = Column(String, default="Pending Workshop")
+    tech_status = Column(String, default="Pending Workshop", index=True)
     pending_with = Column(String)
 
     source_system = Column(String, nullable=True)
@@ -249,4 +249,30 @@ class FollowUpItem(Base):
         Index('ix_followup_tp_status', 'touchpoint_id', 'status'),
         Index('ix_followup_status_due', 'status', 'due_date'),
         Index('ix_followup_source', 'source_mom_entry_id'),
+    )
+
+
+# ============================================================
+# MOCK SERVICE MODEL
+# ============================================================
+
+class MockService(Base):
+    """Developer utility: stubbed bank API endpoints for integration testing."""
+    __tablename__ = "mock_services"
+
+    id = Column(Integer, primary_key=True, index=True)
+    touchpoint_id = Column(Integer, ForeignKey("integration_touchpoints.id", ondelete="SET NULL"), nullable=True, index=True)
+    method_name = Column(String(200), nullable=False, index=True)
+    http_method = Column(String(10), nullable=False, default="POST")
+    status_code = Column(Integer, nullable=False, default=200)
+    content_type = Column(String(100), nullable=False, default="application/json")
+    payload = Column(Text, nullable=False)
+    created_by = Column(String(100), default="User")
+    created_at = Column(TIMESTAMP, server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint(
+            'method_name', 'http_method',
+            name='uq_mock_method_httpmethod'
+        ),
     )
