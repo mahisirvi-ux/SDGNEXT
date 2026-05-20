@@ -1,19 +1,12 @@
-import smtplib
 import uuid
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
 from datetime import datetime, timedelta
 
 from app.core.ai_agent import generate_project_mom
 from app.core.database import SessionLocal
-from app.models.domain import IDRFunctional, IntegrationTouchpoint, IDRActionLog
+from app.models.domain import IDRFunctional, IntegrationTouchpoint, IDRActionLog, Project
+from app.core.graph_mailer import send_graph_email, build_threading_headers
 
-# --- CONFIGURATION (Keep consistent with email_engine.py) ---
-SMTP_SERVER = "smtp.gmail.com"  
-SMTP_PORT = 587
-SMTP_USERNAME = "mahi.sirvi@gmail.com"
-SMTP_PASSWORD = "klrynpcgevlubkfj" 
-MOM_RECIPIENTS = ["mahi.sirvi@gmail.com", "rahulnikam5050@gmail.com"] # Add PMO/Leadership emails here
+MOM_RECIPIENTS = ["mahi.sirvi@gmail.com", "rahulnikam5050@gmail.com"]  # Add PMO/Leadership emails here
 
 
 def _parse_mom_msg_id(log):
@@ -94,20 +87,18 @@ def generate_and_send_mom():
         </html>
         """
 
-        # 6. Send the MOM to the Project Leadership
-        msg = MIMEMultipart("alternative")
-        msg["Subject"] = f"📑 Automated Project MOM - {today_str}"
-        msg["From"] = SMTP_USERNAME
-        msg["To"] = ", ".join(MOM_RECIPIENTS)
+        # 6. Send the MOM to the Project Leadership via Graph
+        subject = f"📑 Automated Project MOM - {today_str}"
+        result = send_graph_email(
+            to_recipients=MOM_RECIPIENTS,
+            subject=subject,
+            html_body=final_email_html
+        )
 
-        msg.attach(MIMEText(final_email_html, "html"))
-
-        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
-            server.starttls()
-            server.login(SMTP_USERNAME, SMTP_PASSWORD)
-            server.sendmail(SMTP_USERNAME, MOM_RECIPIENTS, msg.as_string())
-
-        print(f"[{datetime.now()}] ✅ Automated MOM sent successfully to stakeholders.")
+        if result["success"]:
+            print(f"[{datetime.now()}] Automated MOM sent successfully to stakeholders.")
+        else:
+            print(f"[{datetime.now()}] MOM send failed: {result['error']}")
 
     except Exception as e:
         print(f"[{datetime.now()}] ❌ Failed to generate MOM: {e}")
@@ -197,27 +188,36 @@ def send_touchpoint_mom(touchpoint_id: int, html_body: str, override_recipients:
             "</div></body></html>"
         )
 
-                # Generate stable Message-ID for threading
+        # Resolve project_name for subject prefix.
+        # Threading note: subject must be stable per (project, touchpoint).
+        # Renaming a project mid-thread breaks Gmail threading — accepted risk.
+        project_name = "Project"
+        if tp.project_id:
+            project = db.query(Project).filter(Project.id == tp.project_id).first()
+            if project:
+                project_name = project.project_name
+
+        # Generate stable Message-ID for threading
         msg_id = f"<mom-{touchpoint_id}-{uuid.uuid4().hex[:8]}@sdgnext.local>"
 
-        msg = MIMEMultipart("alternative")
-        msg["Message-ID"] = msg_id
         # CRITICAL: Subject is date-free to enable threading of subsequent
-        # MoM-pointer nudges. Date is communicated in the email body.
-        msg["Subject"] = f"MoM: {tp_name}"
-        msg["From"] = SMTP_USERNAME
-        msg["To"] = ", ".join(to_emails)
-        if cc_emails:
-            msg["Cc"] = ", ".join(cc_emails)
-        msg.attach(MIMEText(final_html, "html"))
+        # MoM-pointer nudges. The project prefix is stable per project.
+        subject = f"{project_name} || MoM: {tp_name}"
 
-        envelope = list(set(to_emails + cc_emails))
-        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
-            server.starttls()
-            server.login(SMTP_USERNAME, SMTP_PASSWORD)
-            server.sendmail(SMTP_USERNAME, envelope, msg.as_string())
+        threading = build_threading_headers(message_id=msg_id)
+        result = send_graph_email(
+            to_recipients=to_emails,
+            subject=subject,
+            html_body=final_html,
+            cc_recipients=cc_emails if cc_emails else None,
+            internet_headers=threading
+        )
 
-                # Only write action log + commit if caller hasn't taken ownership
+        if not result["success"]:
+            print(f"[{datetime.now()}] MoM Graph send failed: {result['error']}")
+            return {"sent_to": [], "skipped": [result["error"]], "success": False, "msg_id": None}
+
+        # Only write action log + commit if caller hasn't taken ownership
         if write_action_log:
             recipient_count = len(to_emails) + len(cc_emails)
             db.add(IDRActionLog(

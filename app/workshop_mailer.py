@@ -1,17 +1,9 @@
-import smtplib
 import uuid
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
 from datetime import date, timedelta, datetime
 from collections import defaultdict
 from app.core.database import SessionLocal
-from app.models.domain import IntegrationTouchpoint, IDRFunctional, IDRTechnical, TeamMaster, DepartmentMaster, IDRActionLog
-
-# --- CONFIGURATION (Re-using your Phase 1 Setup) ---
-SMTP_SERVER = "smtp.gmail.com"  
-SMTP_PORT = 587
-SMTP_USERNAME = "mahi.sirvi@gmail.com"
-SMTP_PASSWORD = "klrynpcgevlubkfj" 
+from app.models.domain import IntegrationTouchpoint, IDRFunctional, IDRTechnical, TeamMaster, DepartmentMaster, IDRActionLog, Project
+from app.core.graph_mailer import send_graph_email, build_threading_headers 
 
 # --- PRE-REQUISITE TEMPLATES (HTML Formatted) ---
 # --- PRE-REQUISITE TEMPLATES (HTML Formatted) ---
@@ -386,7 +378,11 @@ def _send_dept_email(db, project_id, dept_id, grp, tomorrow, tomorrow_str):
     - In-Reply-To and References are set from prior WORKSHOP_INVITE_SENT
       logs for ALL emails (not just rescheduled), so even newly-added
       touchpoints thread into the existing conversation.
-    """
+        """
+    # Resolve project_name for email subject prefix (one query per dept send)
+    project = db.query(Project).filter(Project.id == project_id).first()
+    project_name = project.project_name if project else "Project"
+
     dept_name = grp["dept_name"]
     dept_email = grp["dept_email"]
     items = grp["items"]
@@ -409,7 +405,7 @@ def _send_dept_email(db, project_id, dept_id, grp, tomorrow, tomorrow_str):
     # changes (e.g., when a workshop date changes on reschedule), Gmail
     # starts a NEW conversation regardless of In-Reply-To/References
     # headers. Keep this string stable per (project, department).
-    subject = f"\U0001f4c5 Workshop Invite \u2013 {dept_name}"
+    subject = f"{project_name} || \U0001f4c5 Workshop Invite \u2013 {dept_name}"
 
     # HTML content
     banner = _build_banner(resched_items)
@@ -417,36 +413,41 @@ def _send_dept_email(db, project_id, dept_id, grp, tomorrow, tomorrow_str):
     table = _touchpoint_table(items)
     html = _full_html(tomorrow_str, len(items), banner, participants, table)
 
-    # Compose message
+            # Compose message
     msg_id = f"<workshop-{dept_id}-{tomorrow.isoformat()}-{uuid.uuid4().hex[:8]}@sdgnext.local>"
-    msg = MIMEMultipart("alternative")
-    msg["Message-ID"] = msg_id
-    msg["Subject"] = subject
-    msg["From"] = SMTP_USERNAME
-    msg["To"] = ", ".join(sorted(all_to))
-    if dept_email and dept_email not in all_to:
-        msg["Cc"] = dept_email
 
     # Threading: apply to EVERY email that has prior logs for this dept,
     # not just rescheduled ones. This ensures new touchpoints added to
     # an existing department's workshop also thread correctly.
     in_reply_to, references_chain = _build_thread_headers(db, items)
-    if in_reply_to:
-        msg["In-Reply-To"] = in_reply_to
-    if references_chain:
-        msg["References"] = references_chain
 
-    msg.attach(MIMEText(html, "html"))
+    threading = build_threading_headers(
+        message_id=msg_id,
+        in_reply_to=in_reply_to,
+        references=references_chain
+    )
 
-    # Send
-    envelope = list(all_to)
+    # Build recipient lists
+    to_list = sorted(all_to)
+    cc_list = [dept_email] if (dept_email and dept_email not in all_to) else None
+
+    # Send via Graph
+    result = send_graph_email(
+        to_recipients=to_list,
+        subject=subject,
+        html_body=html,
+        cc_recipients=cc_list,
+        internet_headers=threading if threading else None
+    )
+
+    if not result["success"]:
+        print(f"[{datetime.now()}] Graph send failed for '{dept_name}': {result['error']}")
+        return False
+
+    # Compute envelope count for action log (matches old behavior)
+    envelope_count = len(all_to)
     if dept_email and dept_email not in all_to:
-        envelope.append(dept_email)
-
-    with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
-        server.starttls()
-        server.login(SMTP_USERNAME, SMTP_PASSWORD)
-        server.sendmail(SMTP_USERNAME, envelope, msg.as_string())
+        envelope_count += 1
 
     # Post-send: status update + action logs
     for item in items:
@@ -462,10 +463,10 @@ def _send_dept_email(db, project_id, dept_id, grp, tomorrow, tomorrow_str):
             touchpoint_id=tp_id,
             action_type="WORKSHOP_INVITE_SENT",
             action_by="System (Workshop Mailer)",
-            comment=(
+                comment=(
                 f"WORKSHOP_DATE={item['workshop_date_iso']};"
                 f"KIND={item['invite_kind']};"
-                f"RECIPIENTS_COUNT={len(envelope)};"
+                f"RECIPIENTS_COUNT={envelope_count};"
                 f"MSG_ID={msg_id}"
             )
         ))

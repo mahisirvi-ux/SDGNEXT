@@ -71,8 +71,22 @@ function populatePage(tp) {
         document.querySelectorAll('.nav-project-link').forEach(a => a.href = projectUrl);
     }
 
-    // Header
+        // Header
     document.getElementById('fd-name').innerText = tp.name;
+
+        // Populate project name pill and breadcrumb links
+    const projectName = tp.project_name || "Project";
+    const projectId = tp.project_id;
+    const projNameEl = document.getElementById('fd-project-name');
+    if (projNameEl) {
+        projNameEl.innerText = projectName;
+    }
+    if (projectId) {
+        const projectLink = document.getElementById('fd-project-link');
+        if (projectLink) projectLink.href = `/project?id=${projectId}`;
+        const boardLink = document.getElementById('fd-board-link');
+        if (boardLink) boardLink.href = `/project?id=${projectId}`;
+    }
 
     // Key Info Strip
         document.getElementById('fd-strip-module').innerText = tp.module || '-';

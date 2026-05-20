@@ -1,16 +1,9 @@
-import smtplib
 import re
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
 from app.core.database import SessionLocal
 from app.models.domain import IntegrationTouchpoint, IDRTechnical, FollowUpItem
 from datetime import datetime, date, timedelta
+from app.core.graph_mailer import send_graph_email, build_threading_headers, find_sent_message, reply_to_sent_message
 
-# --- CONFIGURATION ---
-SMTP_SERVER = "smtp.gmail.com"  
-SMTP_PORT = 587
-SMTP_USERNAME = "mahi.sirvi@gmail.com"
-SMTP_PASSWORD = "klrynpcgevlubkfj" 
 RECIPIENTS = ["mahi.sirvi@gmail.com", "gautampatidar15501@gmail.com"]
 
 
@@ -124,21 +117,19 @@ def generate_and_send_daily_summary():
                     </div>
                 </div>
             </body>
-        </html>
+                </html>
         """
-        msg = MIMEMultipart("alternative")
-        msg["Subject"] = f"📊 SDGNext Daily Summary - {today_str}"
-        msg["From"] = SMTP_USERNAME
-        msg["To"] = ", ".join(RECIPIENTS)
+        subject = f"📊 SDGNext Daily Summary - {today_str}"
+        result = send_graph_email(
+            to_recipients=RECIPIENTS,
+            subject=subject,
+            html_body=html_content
+        )
 
-        msg.attach(MIMEText(html_content, "html"))
-
-        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
-            server.starttls()
-            server.login(SMTP_USERNAME, SMTP_PASSWORD)
-            server.sendmail(SMTP_USERNAME, RECIPIENTS, msg.as_string())
-            
-        print(f"[{datetime.now()}] Daily Summary Email Sent Successfully!")
+        if result["success"]:
+            print(f"[{datetime.now()}] Daily Summary Email Sent Successfully!")
+        else:
+            print(f"[{datetime.now()}] Daily summary send failed: {result['error']}")
 
     except Exception as e:
         print(f"[{datetime.now()}] Failed to send summary email: {e}")
@@ -257,38 +248,33 @@ def send_followup_nudges():
                 "</div></body></html>"
             )
 
-            thread_subject = f"Follow-Up: Open Action Items - {project_name} [{owner_name}]"
+            thread_subject = f"{project_name} || Follow-Up: Open Action Items [{owner_name}]"
             thread_seed = f"sdgnext-followup-{project_id}-{owner_name.lower().strip()}"
             thread_id = f"<{hashlib.md5(thread_seed.encode()).hexdigest()}@sdgnext.local>"
 
-            msg = MIMEMultipart("alternative")
-            msg["Subject"] = thread_subject
-            msg["From"] = SMTP_USERNAME
-            msg["To"] = to_email
-            if cc_email and cc_email.lower() != to_email.lower():
-                msg["Cc"] = cc_email
-            msg["In-Reply-To"] = thread_id
-            msg["References"] = thread_id
-            msg.attach(MIMEText(final_html, "html"))
+            threading = build_threading_headers(
+                in_reply_to=thread_id, references=thread_id
+            )
+            cc_list = [cc_email] if (cc_email and cc_email.lower() != to_email.lower()) else None
 
-            envelope = [to_email]
-            if cc_email and cc_email.lower() != to_email.lower():
-                envelope.append(cc_email)
+            mail_result = send_graph_email(
+                to_recipients=[to_email],
+                subject=thread_subject,
+                html_body=final_html,
+                cc_recipients=cc_list,
+                internet_headers=threading
+            )
 
-            try:
-                with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
-                    server.starttls()
-                    server.login(SMTP_USERNAME, SMTP_PASSWORD)
-                    server.sendmail(SMTP_USERNAME, envelope, msg.as_string())
-
+            if mail_result["success"]:
                 for fu in fu_objects:
                     fu.last_nudged_at = today
                 db.commit()
                 sent_count += 1
                 print(f"[{datetime.now()}] Nudge sent to {owner_name} ({to_email}) "
                       f"for {len(items)} open item(s).")
-            except Exception as mail_err:
-                print(f"[{datetime.now()}] Failed to send nudge to {owner_name}: {mail_err}")
+            else:
+                print(f"[{datetime.now()}] Failed to send nudge to {owner_name}: "
+                      f"{mail_result['error']}")
 
         print(f"[{datetime.now()}] Nudge job complete. Sent: {sent_count}, Skipped: {len(skipped)}")
 
@@ -387,12 +373,29 @@ def _render_mom_pointer_html(tp_name, items_display):
 
 
 def _send_mom_pointer_email(db, tp, items_display, to_emails, cc_emails, anchor_msg_id):
-    """Compose and send the MoM-pointer nudge email. Returns True on success."""
-    import uuid
+    """Compose and send the MoM-pointer nudge email as a REPLY to the
+    original MoM. This ensures proper threading in both Outlook and Gmail.
+
+    Strategy:
+    1. Search sender's Sent Items for original MoM email (by subject)
+    2. If found → use Graph reply endpoint (native threading)
+    3. If not found → fallback to fresh send (still threads in Gmail via subject)
+
+    Returns True on success.
+    """
+    from app.models.domain import Project
 
     tp_name = tp.name or "Touchpoint"
-    # CRITICAL: subject must match the MoM email subject for Gmail threading.
-    subject = f"MoM: {tp_name}"
+
+    # Resolve project_name for subject prefix.
+    project_name = "Project"
+    if tp.project_id:
+        project = db.query(Project).filter(Project.id == tp.project_id).first()
+        if project:
+            project_name = project.project_name
+
+    # Subject must MATCH the original MoM subject exactly for lookup
+    subject = f"{project_name} || MoM: {tp_name}"
 
     html_body = _render_mom_pointer_html(tp_name, items_display)
     today_str = datetime.now().strftime("%B %d, %Y")
@@ -413,34 +416,37 @@ def _send_mom_pointer_email(db, tp, items_display, to_emails, cc_emails, anchor_
         "</div></body></html>"
     )
 
-    msg_id = f"<mom-nudge-{tp.id}-{uuid.uuid4().hex[:8]}@sdgnext.local>"
-    msg = MIMEMultipart("alternative")
-    msg["Message-ID"] = msg_id
-    msg["Subject"] = subject
-    msg["From"] = SMTP_USERNAME
-    msg["To"] = ", ".join(to_emails)
-    if cc_emails:
-        msg["Cc"] = ", ".join(cc_emails)
-
-    if anchor_msg_id:
-        msg["In-Reply-To"] = anchor_msg_id
-        msg["References"] = anchor_msg_id
-
-    msg.attach(MIMEText(final_html, "html"))
-
-    envelope = list(set(to_emails + cc_emails))
-    if not envelope:
+    if not to_emails and not cc_emails:
         return False
 
-    try:
-        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
-            server.starttls()
-            server.login(SMTP_USERNAME, SMTP_PASSWORD)
-            server.sendmail(SMTP_USERNAME, envelope, msg.as_string())
+    # --- Try reply-based threading (Outlook + Gmail) ---
+    original_graph_id = find_sent_message(subject)
+
+    if original_graph_id:
+        # Found the original MoM in Sent Items → reply to it
+        print(f"[{datetime.now()}] TP {tp.id}: Found original MoM in Sent Items, sending as reply...")
+        result = reply_to_sent_message(
+            original_message_id=original_graph_id,
+            html_body=final_html,
+            to_recipients=to_emails,
+            cc_recipients=cc_emails if cc_emails else None
+        )
+    else:
+        # Original not found → fallback to fresh send (threads in Gmail via subject)
+        print(f"[{datetime.now()}] TP {tp.id}: Original MoM not in Sent Items, sending fresh.")
+        result = send_graph_email(
+            to_recipients=to_emails,
+            subject=subject,
+            html_body=final_html,
+            cc_recipients=cc_emails if cc_emails else None
+        )
+
+    if result["success"]:
         print(f"[{datetime.now()}] MoM-pointer nudge sent for TP {tp.id} ({tp_name})")
         return True
-    except Exception as e:
-        print(f"[{datetime.now()}] Failed to send MoM-pointer nudge for TP {tp.id}: {e}")
+    else:
+        print(f"[{datetime.now()}] Failed to send MoM-pointer nudge for TP {tp.id}: "
+              f"{result['error']}")
         return False
 
 

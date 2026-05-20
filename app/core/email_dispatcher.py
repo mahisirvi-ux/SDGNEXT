@@ -1,19 +1,12 @@
-import smtplib
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
-from email.mime.application import MIMEApplication
+import base64
 from io import BytesIO
-
-SMTP_SERVER = "smtp.gmail.com"  
-SMTP_PORT = 587
-SMTP_USERNAME = "mahi.sirvi@gmail.com"
-SMTP_PASSWORD = "klrynpcgevlubkfj"
+from app.core.graph_mailer import send_graph_email
 
 
 def send_rgt_invite(to_emails: list, cc_emails: list, touchpoint_data: dict, rgt_buffer: BytesIO) -> bool:
     """
     Sends the RGT to collect technical specs from the bank team.
-    
+
     TO: Owner + Technical Owner + Module Owner
     CC: Department email
     Attachment: RGT Word document
@@ -27,12 +20,7 @@ def send_rgt_invite(to_emails: list, cc_emails: list, touchpoint_data: dict, rgt
         print(f"[RGT] No recipients for WUD-ID:{wud_id}. Skipping.")
         return False
 
-    msg = MIMEMultipart("mixed")
-    msg['From'] = SMTP_USERNAME
-    msg['To'] = ", ".join(to_emails)
-    if cc_emails:
-        msg['Cc'] = ", ".join(cc_emails)
-    msg['Subject'] = f"ACTION REQUIRED: Technical Specifications for {api_name} [WUD-ID:{wud_id}]"
+    subject = f"ACTION REQUIRED: Technical Specifications for {api_name} [WUD-ID:{wud_id}]"
 
     html_body = f"""
     <html>
@@ -70,25 +58,32 @@ def send_rgt_invite(to_emails: list, cc_emails: list, touchpoint_data: dict, rgt
     </body>
     </html>
     """
-    msg.attach(MIMEText(html_body, 'html'))
 
-    # Attach RGT
+    # Build attachment for Graph API
     safe_name = api_name.replace(" ", "_").replace("/", "-")
-    attachment = MIMEApplication(
-        rgt_buffer.read(),
-        _subtype="vnd.openxmlformats-officedocument.wordprocessingml.document"
-    )
-    attachment.add_header('Content-Disposition', 'attachment', filename=f"RGT_{safe_name}_Spec.docx")
-    msg.attach(attachment)
+    file_bytes = rgt_buffer.read()
+    file_b64 = base64.b64encode(file_bytes).decode("utf-8")
 
-    try:
-        envelope = list(set(to_emails) | set(cc_emails))
-        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
-            server.starttls()
-            server.login(SMTP_USERNAME, SMTP_PASSWORD)
-            server.sendmail(SMTP_USERNAME, envelope, msg.as_string())
+    attachments = [{
+        "name": f"RGT_{safe_name}_Spec.docx",
+        "contentType": (
+            "application/vnd.openxmlformats-officedocument"
+            ".wordprocessingml.document"
+        ),
+        "contentBytes": file_b64,
+    }]
+
+    result = send_graph_email(
+        to_recipients=to_emails,
+        subject=subject,
+        html_body=html_body,
+        cc_recipients=cc_emails if cc_emails else None,
+        attachments=attachments
+    )
+
+    if result["success"]:
         print(f"[RGT] Sent WUD-ID:{wud_id} | TO: {', '.join(to_emails)} | CC: {', '.join(cc_emails)}")
         return True
-    except Exception as e:
-        print(f"[RGT] FAILED WUD-ID:{wud_id}: {e}")
+    else:
+        print(f"[RGT] FAILED WUD-ID:{wud_id}: {result['error']}")
         return False

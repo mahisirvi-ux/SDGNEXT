@@ -20,8 +20,8 @@
     <!-- TOP HEADER BAR -->
         <div class="bg-shell shadow-lg flex-shrink-0">
         <div class="px-6 py-3 flex justify-between items-center">
-            <div class="flex items-center gap-3">
-                                <a href="/" class="text-lg font-bold text-white hover:opacity-80 transition-opacity" title="Home">
+                        <div class="flex items-center gap-3">
+                <a href="/" class="text-lg font-bold text-white hover:opacity-80 transition-opacity" title="Home">
                     SDG<span class="text-pink-400">NEXT</span>
                 </a>
                 <span class="text-slate-600">|</span>
@@ -29,8 +29,20 @@
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
                 </a>
                 <div>
-                    <p class="text-[10px] text-slate-400 uppercase tracking-wider">Home &gt; Workshop Board &gt; Detail</p>
+                    <p class="text-[10px] text-slate-400 uppercase tracking-wider">
+                        <a href="/" class="hover:text-white transition-colors">Home</a>
+                        &gt;
+                        <a id="fd-board-link" href="#" class="hover:text-white transition-colors">Workshop Board</a>
+                        &gt;
+                        Detail
+                    </p>
                     <h1 id="fd-name" class="text-base font-extrabold text-white mt-0.5">Loading...</h1>
+                </div>
+                <div class="flex items-center space-x-3 ml-4">
+                    <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Project:</span>
+                    <a id="fd-project-link" href="#" class="text-xs font-semibold text-white bg-white/10 px-3 py-1.5 rounded-full border border-white/20 hover:bg-white/20 transition-all">
+                        <span id="fd-project-name">Loading...</span>
+                    </a>
                 </div>
             </div>
             <div class="flex items-center gap-2.5">

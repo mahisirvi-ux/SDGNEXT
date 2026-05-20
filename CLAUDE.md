@@ -47,6 +47,7 @@
 | File | Purpose |
 |------|---------|
 | `app/main.py` | FastAPI app + Phase 2 endpoints |
+| `app/core/graph_mailer.py` | Microsoft Graph API email transport (single send point) |
 | `app/services/file_parser.py` | CSV upload processing |
 | `app/services/project_health.py` | Landing page KPIs + daily snapshot capture |
 | `app/services/identity_validator.py` | Name resolution |
@@ -74,6 +75,16 @@
 
 ### Email Workflows
 
+- **Transport:** Microsoft Graph API (OAuth2 client-credentials flow).
+  All outbound email goes through `app/core/graph_mailer.py` →
+  `send_graph_email()`. Credentials in `.env` (gitignored);
+  `.env.example` documents the required keys. See
+  `docs/context/email-transport.md` for full details.
+- **Inbound mail** (`app/core/inbound_service.py`) still uses IMAP.
+  Migrating inbound to Graph is separate future work — do NOT touch
+  `inbound_service.py` for outbound email changes.
+- **Diagnostics:** `GET /admin/graph/health` verifies Graph credentials;
+  `POST /admin/graph/test-email?to_address=...` sends a test.
 - **Daily summary (6 PM):** Technical delivery snapshot, cross-project.
   Shows Workshops Scheduled, Workshops Completed, Open Follow-ups,
   Overdue Follow-ups. Function: `generate_and_send_daily_summary()`.
@@ -103,6 +114,30 @@
   `idr_status="Pending"` which is dead after single-stage workflow).
 - Test endpoint: `/test-followup-nudges` (the old `/test-follow-ups` was
   removed alongside its function).
+
+### Email Subject Convention
+
+All outbound SDGNext emails (except global daily summary and the automated
+cross-project MoM) use the format:
+
+    {project_name} || {email-specific-subject}
+
+Examples:
+- "BOM || \U0001f4c5 Workshop Invite \u2013 CBS"
+- "BOM || MoM: Email Gateway with Gupshup"
+- "BOM || Follow-Up: Open Action Items [Rahul]"
+
+Rationale: bank teams work across multiple SDGNext projects; the project
+prefix makes inbox triage instant.
+
+Threading: subject is stable per (project, dept) or (project, touchpoint).
+Renaming a project mid-thread breaks Gmail threading \u2014 not currently
+supported. The stable_part after "||" is unchanged from the pre-prefix
+format (byte-identical) to preserve future threading consistency.
+
+Excluded emails (no prefix):
+- `\U0001f4ca SDGNext Daily Summary - {date}` \u2014 spans all projects
+- `\U0001f4d1 Automated Project MOM - {date}` \u2014 spans all projects
 
 ### Mock Services
 

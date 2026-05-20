@@ -1,3 +1,6 @@
+from dotenv import load_dotenv
+load_dotenv()
+
 import os
 from fastapi import FastAPI, BackgroundTasks, Request, HTTPException, Depends, Body
 from fastapi.middleware.cors import CORSMiddleware
@@ -477,6 +480,11 @@ def get_single_touchpoint(tp_id: int):
             return {"status": "error", "message": "Touchpoint not found"}
 
         tp, func, tech = result
+
+        # Resolve project_name for frontend breadcrumb
+        from app.models.domain import Project
+        project = db.query(Project).filter(Project.id == tp.project_id).first()
+        project_name = project.project_name if project else "Project"
         
         tech_owner = getattr(func, "owner", "Unassigned")
         tech_status = tech.tech_status if tech and tech.tech_status else "Auto"
@@ -557,6 +565,7 @@ def get_single_touchpoint(tp_id: int):
             "data": {
                 "id": tp.id,
                 "project_id": tp.project_id,
+                "project_name": project_name,
                 "name": tp.name,
                 "module": func.module or "Unknown",
                 "owner": tech_owner,
@@ -672,3 +681,28 @@ def download_document(doc_id: int):
         )
     finally:
         db.close()
+
+
+# --- Graph API Admin Endpoints ---
+@app.get("/admin/graph/health")
+def admin_graph_health():
+    """Dev: verify Graph credentials and report which permissions were
+    granted. Use this to confirm setup before relying on email features."""
+    from app.core.graph_mailer import graph_permission_check
+    return graph_permission_check()
+
+
+@app.post("/admin/graph/test-email")
+def admin_graph_test_email(to_address: str):
+    """Dev: send a single test email via Graph to verify end-to-end
+    delivery."""
+    from app.core.graph_mailer import send_graph_email
+    result = send_graph_email(
+        to_recipients=[to_address],
+        subject="SDGNext || Graph API Test Email",
+        html_body=(
+            "<p>This is a test email sent via Microsoft Graph API. "
+            "If you received it, the integration is working.</p>"
+        )
+    )
+    return result
