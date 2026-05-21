@@ -303,7 +303,7 @@ def find_sent_message(subject_filter, max_age_days=30):
 
 
 def reply_to_sent_message(original_message_id, html_body,
-                          to_recipients=None, cc_recipients=None):
+                          to_recipients=None, cc_recipients=None, subject=None):
     """Send a reply to an existing message in the sender's mailbox.
 
     Uses Graph API: POST /users/{mailbox}/messages/{id}/reply
@@ -343,6 +343,9 @@ def reply_to_sent_message(original_message_id, html_body,
             }
         }
     }
+    # Override Graph's default "RE: " prefix
+    if subject:
+        payload["message"]["subject"] = subject
 
     # Override recipients if provided
     def _addr_list(addrs):

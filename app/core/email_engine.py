@@ -249,21 +249,32 @@ def send_followup_nudges():
             )
 
             thread_subject = f"{project_name} || Follow-Up: Open Action Items [{owner_name}]"
-            thread_seed = f"sdgnext-followup-{project_id}-{owner_name.lower().strip()}"
-            thread_id = f"<{hashlib.md5(thread_seed.encode()).hexdigest()}@sdgnext.local>"
-
-            threading = build_threading_headers(
-                in_reply_to=thread_id, references=thread_id
-            )
             cc_list = [cc_email] if (cc_email and cc_email.lower() != to_email.lower()) else None
+            
+            # --- NEW THREADING LOGIC ---
+            from app.core.graph_mailer import find_sent_message, reply_to_sent_message
+            
+            # 1. Search for a previous nudge in the Sent Items
+            original_graph_id = find_sent_message(thread_subject)
 
-            mail_result = send_graph_email(
-                to_recipients=[to_email],
-                subject=thread_subject,
-                html_body=final_html,
-                cc_recipients=cc_list,
-                internet_headers=threading
-            )
+            if original_graph_id:
+                # 2. If found, thread it natively without the "RE: " prefix
+                mail_result = reply_to_sent_message(
+                    original_message_id=original_graph_id,
+                    html_body=final_html,
+                    to_recipients=[to_email],
+                    cc_recipients=cc_list,
+                    subject=thread_subject
+                )
+            else:
+                # 3. First time nudging, send a fresh email thread
+                mail_result = send_graph_email(
+                    to_recipients=[to_email],
+                    subject=thread_subject,
+                    html_body=final_html,
+                    cc_recipients=cc_list
+                )
+            # ---------------------------
 
             if mail_result["success"]:
                 for fu in fu_objects:
@@ -429,7 +440,8 @@ def _send_mom_pointer_email(db, tp, items_display, to_emails, cc_emails, anchor_
             original_message_id=original_graph_id,
             html_body=final_html,
             to_recipients=to_emails,
-            cc_recipients=cc_emails if cc_emails else None
+            cc_recipients=cc_emails if cc_emails else None,
+            subject=subject
         )
     else:
         # Original not found → fallback to fresh send (threads in Gmail via subject)
