@@ -3,8 +3,7 @@ from datetime import date, timedelta, datetime
 from collections import defaultdict
 from app.core.database import SessionLocal
 from app.models.domain import IntegrationTouchpoint, IDRFunctional, IDRTechnical, TeamMaster, DepartmentMaster, IDRActionLog, Project
-from app.core.graph_mailer import send_graph_email, build_threading_headers 
-
+from app.core.graph_mailer import send_graph_email, build_threading_headers, create_teams_meeting
 # --- PRE-REQUISITE TEMPLATES (HTML Formatted) ---
 # --- PRE-REQUISITE TEMPLATES (HTML Formatted) ---
 PRE_REQS = {
@@ -412,7 +411,19 @@ def _send_dept_email(db, project_id, dept_id, grp, tomorrow, tomorrow_str):
     participants = _participants_html(dept_name, bank_str, crm_str)
     table = _touchpoint_table(items)
     html = _full_html(tomorrow_str, len(items), banner, participants, table)
-
+    # Create one Teams meeting for this department's workshop
+    meeting_start = datetime.combine(tomorrow, datetime.min.time()).replace(hour=10)
+    meeting_end = meeting_start + timedelta(hours=1)
+    meeting_subject = f"Workshop \u2013 {dept_name} ({tomorrow_str})"
+    teams_result = create_teams_meeting(
+        meeting_subject, meeting_start, meeting_end
+    )
+    join_url = teams_result["join_url"] if teams_result["success"] else None
+    if not join_url:
+        print(f"[{datetime.now()}] Teams meeting failed for "
+              f"'{dept_name}': {teams_result['error']}")
+    join_block = _teams_join_block(join_url)
+    html = _full_html(tomorrow_str, len(items), banner, participants, table, join_block)
             # Compose message
     msg_id = f"<workshop-{dept_id}-{tomorrow.isoformat()}-{uuid.uuid4().hex[:8]}@sdgnext.local>"
 
@@ -542,7 +553,7 @@ def _touchpoint_table(items):
     )
 
 
-def _full_html(tomorrow_str, item_count, banner, participants, table):
+def _full_html(tomorrow_str, item_count, banner, participants, table, join_block=""):
     """Assemble the full email HTML document."""
     return (
         '<html><body style="font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;'
@@ -562,8 +573,36 @@ def _full_html(tomorrow_str, item_count, banner, participants, table):
         f'scheduled for tomorrow, <strong>{tomorrow_str}</strong>. '
         f'Please review the <strong>{item_count} touchpoint(s)</strong> below and come '
         'prepared with the listed architectural prerequisites.</div>'
+        f'{join_block}'
         f'{banner}'
         f'{participants}'
         f'{table}'
         '</div></div></body></html>'
+    )
+
+
+def _teams_join_block(join_url):
+    """Build the Teams join-link block, or a fallback note."""
+    if join_url:
+        return (
+            '<div style="background-color:#f0f9ff;border:1px solid #bae6fd;'
+            'border-radius:8px;padding:18px 20px;margin-bottom:25px;text-align:center;">'
+            '<p style="margin:0 0 12px 0;font-size:13px;color:#0369a1;'
+            'font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">'
+            'Microsoft Teams Meeting</p>'
+            f'<a href="{join_url}" '
+            'style="display:inline-block;background-color:#4f46e5;color:white;'
+            'text-decoration:none;font-size:14px;font-weight:600;'
+            'padding:10px 28px;border-radius:6px;">Join Workshop</a>'
+            '<p style="margin:12px 0 0 0;font-size:11px;color:#64748b;">'
+            'Click to join the Teams workshop session.</p>'
+            '</div>'
+        )
+    return (
+        '<div style="background-color:#fef3c7;border:1px solid #fde68a;'
+        'border-radius:8px;padding:14px 20px;margin-bottom:25px;">'
+        '<p style="margin:0;font-size:13px;color:#92400e;">'
+        'Teams meeting link could not be generated. The workshop '
+        'coordinator will share the join link separately.</p>'
+        '</div>'
     )

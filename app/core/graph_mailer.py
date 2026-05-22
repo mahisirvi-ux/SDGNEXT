@@ -304,22 +304,14 @@ def find_sent_message(subject_filter, max_age_days=30):
 
 def reply_to_sent_message(original_message_id, html_body,
                           to_recipients=None, cc_recipients=None):
-    """Send a reply to an existing message in the sender's mailbox.
+    """Send a reply that INCLUDES the quoted original content.
 
-    Uses Graph API: POST /users/{mailbox}/messages/{id}/reply
-    This creates a proper threaded reply with:
-    - Re: prefix on subject (automatic)
-    - Correct In-Reply-To and References headers (automatic)
-    - Conversation threading in Outlook AND Gmail
+    Uses the createReply draft flow (needs Mail.ReadWrite):
+      1. POST /messages/{id}/createReply  -> draft with quoted body
+      2. PATCH /messages/{draft_id}       -> our HTML + the quote
+      3. POST /messages/{draft_id}/send
 
-    Args:
-        original_message_id: Graph message ID (from find_sent_message)
-        html_body: HTML content for the reply body
-        to_recipients: optional override of To recipients
-        cc_recipients: optional override of CC recipients
-
-    Returns:
-        {"success": bool, "error": str or None}
+    Returns {"success": bool, "error": str or None}.
     """
     try:
         token = _get_access_token()
@@ -328,23 +320,12 @@ def reply_to_sent_message(original_message_id, html_body,
 
     cfg = _config()
     sender_mailbox = cfg["sender_mailbox"]
-
-    reply_url = (
-        f"https://graph.microsoft.com/v1.0/users/{sender_mailbox}"
-        f"/messages/{original_message_id}/reply"
-    )
-
-    # Build the reply payload
-    payload = {
-        "message": {
-            "body": {
-                "contentType": "HTML",
-                "content": html_body
-            }
-        }
+    base = f"https://graph.microsoft.com/v1.0/users/{sender_mailbox}"
+    auth_headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json"
     }
 
-    # Override recipients if provided
     def _addr_list(addrs):
         return [
             {"emailAddress": {"address": a}}
@@ -352,35 +333,79 @@ def reply_to_sent_message(original_message_id, html_body,
             if a and a.strip()
         ]
 
-    if to_recipients:
-        payload["message"]["toRecipients"] = _addr_list(to_recipients)
-    if cc_recipients:
-        payload["message"]["ccRecipients"] = _addr_list(cc_recipients)
-
+    # Step 1: createReply -> draft already containing the quote
+    create_url = f"{base}/messages/{original_message_id}/createReply"
     try:
-        resp = requests.post(
-            reply_url,
-            headers={
-                "Authorization": f"Bearer {token}",
-                "Content-Type": "application/json"
-            },
-            json=payload,
-            timeout=45
-        )
+        resp = requests.post(create_url, headers=auth_headers,
+                             timeout=45)
     except Exception as e:
-        return {"success": False, "error": f"Graph request error: {e}"}
+        return {"success": False,
+                "error": f"createReply request error: {e}"}
 
-    # Reply endpoint returns 202 Accepted on success
+    if resp.status_code not in (200, 201):
+        return {"success": False,
+                "error": (f"createReply failed "
+                          f"({resp.status_code}): {resp.text[:300]}")}
+
+    draft = resp.json()
+    draft_id = draft.get("id")
+    if not draft_id:
+        return {"success": False,
+                "error": "createReply returned no draft id"}
+
+    quoted_body = ""
+    body_obj = draft.get("body", {})
+    if isinstance(body_obj, dict):
+        quoted_body = body_obj.get("content", "") or ""
+
+    # Step 2: PATCH the draft with our content + the quote
+    combined_body = (
+        f"{html_body}"
+        f"<br><br>"
+        f"<div style='border-top:1px solid #e2e8f0;"
+        f"margin-top:20px;padding-top:10px;'></div>"
+        f"{quoted_body}"
+    )
+
+    patch_payload = {
+        "body": {
+            "contentType": "HTML",
+            "content": combined_body
+        }
+    }
+    if to_recipients:
+        patch_payload["toRecipients"] = _addr_list(to_recipients)
+    if cc_recipients:
+        patch_payload["ccRecipients"] = _addr_list(cc_recipients)
+
+    patch_url = f"{base}/messages/{draft_id}"
+    try:
+        resp = requests.patch(patch_url, headers=auth_headers,
+                              json=patch_payload, timeout=45)
+    except Exception as e:
+        return {"success": False,
+                "error": f"draft PATCH request error: {e}"}
+
+    if resp.status_code not in (200, 201):
+        return {"success": False,
+                "error": (f"draft PATCH failed "
+                          f"({resp.status_code}): {resp.text[:300]}")}
+
+    # Step 3: send the draft
+    send_url = f"{base}/messages/{draft_id}/send"
+    try:
+        resp = requests.post(send_url, headers=auth_headers,
+                             timeout=45)
+    except Exception as e:
+        return {"success": False,
+                "error": f"draft send request error: {e}"}
+
     if resp.status_code == 202:
         return {"success": True, "error": None}
 
-    return {
-        "success": False,
-        "error": (
-            f"Graph reply failed "
-            f"({resp.status_code}): {resp.text[:300]}"
-        )
-    }
+    return {"success": False,
+            "error": (f"draft send failed "
+                      f"({resp.status_code}): {resp.text[:300]}")}
 
 
 def graph_permission_check():
@@ -445,3 +470,50 @@ def graph_permission_check():
         )
 
     return result
+def create_teams_meeting(subject, start_datetime, end_datetime):
+    """Create a Teams online meeting. Returns
+    {"success": bool, "join_url": str|None, "error": str|None}.
+    Never raises."""
+    try:
+        token = _get_access_token()
+    except Exception as e:
+        return {"success": False, "join_url": None,
+                "error": f"Auth failed: {e}"}
+
+    cfg = _config()
+    sender_mailbox = cfg["sender_mailbox"]
+    url = (
+        f"https://graph.microsoft.com/v1.0/users/"
+        f"{sender_mailbox}/onlineMeetings"
+    )
+    payload = {
+        "subject": subject,
+        "startDateTime": start_datetime.isoformat(),
+        "endDateTime": end_datetime.isoformat(),
+    }
+
+    try:
+        resp = requests.post(
+            url,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json"
+            },
+            json=payload,
+            timeout=45
+        )
+    except Exception as e:
+        return {"success": False, "join_url": None,
+                "error": f"Graph request error: {e}"}
+
+    if resp.status_code in (200, 201):
+        join_url = resp.json().get("joinWebUrl")
+        if join_url:
+            return {"success": True, "join_url": join_url,
+                    "error": None}
+        return {"success": False, "join_url": None,
+                "error": "Meeting created but no joinWebUrl"}
+
+    return {"success": False, "join_url": None,
+            "error": (f"onlineMeetings failed "
+                      f"({resp.status_code}): {resp.text[:300]}")}
