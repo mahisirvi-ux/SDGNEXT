@@ -1,10 +1,11 @@
 import uuid
 from datetime import datetime, timedelta
-
 from app.core.ai_agent import generate_project_mom
 from app.core.database import SessionLocal
-from app.models.domain import IDRFunctional, IntegrationTouchpoint, IDRActionLog, Project
-from app.core.graph_mailer import send_graph_email, build_threading_headers
+from app.models.domain import IDRFunctional, IntegrationTouchpoint, IDRActionLog, Project ,IDRActionLog as _ActionLog
+from app.core.graph_mailer import send_graph_email, build_threading_headers ,reply_to_sent_message ,find_latest_in_conversation
+
+
 
 MOM_RECIPIENTS = ["mahi.sirvi@gmail.com", "rahulnikam5050@gmail.com"]  # Add PMO/Leadership emails here
 
@@ -107,7 +108,8 @@ def generate_and_send_mom():
 
 
 def send_touchpoint_mom(touchpoint_id: int, html_body: str, override_recipients: list = None, write_action_log: bool = True) -> dict:
-    """Sends a touchpoint-level MoM email to derived or overridden recipients.
+    """Sends a touchpoint-level MoM email as a REPLY on the latest
+    message in the touchpoint's workshop invite thread.
 
     Args:
         write_action_log: If True (default), inserts IDRActionLog and commits.
@@ -122,7 +124,8 @@ def send_touchpoint_mom(touchpoint_id: int, html_body: str, override_recipients:
             IntegrationTouchpoint.id == touchpoint_id
         ).first()
         if not tp:
-            return {"sent_to": [], "skipped": ["Touchpoint not found"], "success": False}
+            return {"sent_to": [], "skipped": ["Touchpoint not found"],
+                    "success": False}
 
         project_id = tp.project_id
         func = db.query(IDRFunctional).filter(
@@ -173,66 +176,92 @@ def send_touchpoint_mom(touchpoint_id: int, html_body: str, override_recipients:
         tp_name = tp.name or "Integration Touchpoint"
 
         final_html = (
-            "<html><body style='font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;"
-            "color:#1e293b;background:#f8fafc;padding:30px;'>"
+            "<html><body style='font-family:-apple-system,BlinkMacSystemFont,"
+            "Segoe UI,Roboto,sans-serif;color:#1e293b;background:#f8fafc;padding:30px;'>"
             "<div style='max-width:800px;margin:0 auto;background:white;border-radius:8px;"
-            "box-shadow:0 4px 6px rgba(0,0,0,0.05);overflow:hidden;border-top:5px solid #4338ca;'>"
-            f"<div style='padding:30px;background:#f1f5f9;border-bottom:1px solid #e2e8f0;'>"
+            "box-shadow:0 4px 6px rgba(0,0,0,0.05);overflow:hidden;"
+            "border-top:5px solid #4338ca;'>"
+            f"<div style='padding:30px;background:#f1f5f9;"
+            f"border-bottom:1px solid #e2e8f0;'>"
             f"<h2 style='margin:0;color:#0f172a;'>Minutes of Meeting</h2>"
             f"<p style='margin:5px 0 0;color:#64748b;font-size:14px;'>"
             f"{tp_name} &mdash; {today_str}</p></div>"
-            f"<div style='padding:40px;line-height:1.6;font-size:15px;'>{html_body}</div>"
+            f"<div style='padding:40px;line-height:1.6;font-size:15px;'>"
+            f"{html_body}</div>"
             "<div style='padding:20px;text-align:center;background:#f8fafc;"
             "border-top:1px solid #e2e8f0;font-size:12px;color:#94a3b8;'>"
-            "Automated MoM via <strong>SDGNext Command Center</strong></div>"
-            "</div></body></html>"
+            "Automated MoM via <strong>SDGNext Command Center</strong>"
+            "</div></div></body></html>"
         )
 
-        # Resolve project_name for subject prefix.
-        # Threading note: subject must be stable per (project, touchpoint).
-        # Renaming a project mid-thread breaks Gmail threading — accepted risk.
+        # Resolve project_name for subject prefix
         project_name = "Project"
         if tp.project_id:
-            project = db.query(Project).filter(Project.id == tp.project_id).first()
+            project = db.query(Project).filter(
+                Project.id == tp.project_id
+            ).first()
             if project:
                 project_name = project.project_name
 
-        # Generate stable Message-ID for threading
-        msg_id = f"<mom-{touchpoint_id}-{uuid.uuid4().hex[:8]}@sdgnext.local>"
-
-        # CRITICAL: Subject is date-free to enable threading of subsequent
-        # MoM-pointer nudges. The project prefix is stable per project.
-        subject = f"{project_name} || MoM: {tp_name}"
-
-        threading = build_threading_headers(message_id=msg_id)
-        result = send_graph_email(
-            to_recipients=to_emails,
-            subject=subject,
-            html_body=final_html,
-            cc_recipients=cc_emails if cc_emails else None,
-            internet_headers=threading
+        # Workshop invite subject is the thread root for this touchpoint.
+        # MoM replies onto the latest message in that conversation so
+        # the chain always grows linearly:
+        # invite → reschedule → MoM → nudge → MoM → nudge ...
+        workshop_subject = (
+            f"{project_name} || \U0001f4c5 Workshop Invite \u2013 {tp_name}"
         )
 
-        if not result["success"]:
-            print(f"[{datetime.now()}] MoM Graph send failed: {result['error']}")
-            return {"sent_to": [], "skipped": [result["error"]], "success": False, "msg_id": None}
+        msg_id = f"<mom-{touchpoint_id}-{uuid.uuid4().hex[:8]}@sdgnext.local>"
 
-        # Only write action log + commit if caller hasn't taken ownership
+        # Find the latest message in this touchpoint's conversation
+        latest_graph_id = find_latest_in_conversation(workshop_subject)
+
+        if latest_graph_id:
+            print(f"[{datetime.now()}] MoM for TP {touchpoint_id}: "
+                  f"replying on latest message in thread.")
+            result = reply_to_sent_message(
+                original_message_id=latest_graph_id,
+                html_body=final_html,
+                to_recipients=to_emails,
+                cc_recipients=cc_emails if cc_emails else None
+            )
+        else:
+            # No workshop invite thread found (new touchpoint or legacy data)
+            # Send fresh with the workshop subject so it becomes the thread root
+            print(f"[{datetime.now()}] MoM for TP {touchpoint_id}: "
+                  f"no thread found, sending fresh.")
+            result = send_graph_email(
+                to_recipients=to_emails,
+                subject=workshop_subject,
+                html_body=final_html,
+                cc_recipients=cc_emails if cc_emails else None
+            )
+
+        if not result["success"]:
+            print(f"[{datetime.now()}] MoM Graph send failed: "
+                  f"{result['error']}")
+            return {"sent_to": [], "skipped": [result["error"]],
+                    "success": False, "msg_id": None}
+
         if write_action_log:
             recipient_count = len(to_emails) + len(cc_emails)
             db.add(IDRActionLog(
                 touchpoint_id=touchpoint_id,
                 action_type="MOM_SENT",
                 action_by="User",
-                comment=f"MoM emailed to {recipient_count} recipients;MSG_ID={msg_id}"
+                comment=(f"MoM emailed to {recipient_count} recipients;"
+                         f"MSG_ID={msg_id}")
             ))
             db.commit()
 
-        print(f"[{datetime.now()}] MoM sent for TP {touchpoint_id} to {to_emails}")
-        return {"sent_to": to_emails, "skipped": skipped, "success": True, "msg_id": msg_id}
+        print(f"[{datetime.now()}] MoM sent for TP {touchpoint_id} "
+              f"to {to_emails}")
+        return {"sent_to": to_emails, "skipped": skipped,
+                "success": True, "msg_id": msg_id}
 
     except Exception as e:
         print(f"[{datetime.now()}] Failed to send touchpoint MoM: {e}")
-        return {"sent_to": [], "skipped": [str(e)], "success": False, "msg_id": None}
+        return {"sent_to": [], "skipped": [str(e)],
+                "success": False, "msg_id": None}
     finally:
         db.close()

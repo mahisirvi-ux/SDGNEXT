@@ -2,8 +2,8 @@ import re
 from app.core.database import SessionLocal
 from app.models.domain import IntegrationTouchpoint, IDRTechnical, FollowUpItem
 from datetime import datetime, date, timedelta
-from app.core.graph_mailer import send_graph_email, build_threading_headers, find_sent_message, reply_to_sent_message
-
+from app.core.graph_mailer import send_graph_email, build_threading_headers, find_sent_message, reply_to_sent_message, find_latest_in_conversation
+from app.models.domain import IDRActionLog as _AL
 RECIPIENTS = ["mahi.sirvi@gmail.com", "gautampatidar15501@gmail.com"]
 
 
@@ -373,13 +373,14 @@ def _render_mom_pointer_html(tp_name, items_display):
 
 
 def _send_mom_pointer_email(db, tp, items_display, to_emails, cc_emails, anchor_msg_id):
-    """Compose and send the MoM-pointer nudge email as a REPLY to the
-    original MoM. This ensures proper threading in both Outlook and Gmail.
+    """Compose and send the MoM-pointer nudge email as a REPLY on the
+    latest message in the touchpoint's thread.
 
     Strategy:
-    1. Search sender's Sent Items for original MoM email (by subject)
-    2. If found → use Graph reply endpoint (native threading)
-    3. If not found → fallback to fresh send (still threads in Gmail via subject)
+    1. Find the latest sent message in the touchpoint's workshop
+       invite conversation (handles RE: prefix chains correctly)
+    2. If found → reply onto it (native Outlook + Gmail threading)
+    3. If not found → fallback to fresh send
 
     Returns True on success.
     """
@@ -387,53 +388,64 @@ def _send_mom_pointer_email(db, tp, items_display, to_emails, cc_emails, anchor_
 
     tp_name = tp.name or "Touchpoint"
 
-    # Resolve project_name for subject prefix.
     project_name = "Project"
     if tp.project_id:
-        project = db.query(Project).filter(Project.id == tp.project_id).first()
+        project = db.query(Project).filter(
+            Project.id == tp.project_id
+        ).first()
         if project:
             project_name = project.project_name
 
-    # Subject must MATCH the original MoM subject exactly for lookup
-    subject = f"{project_name} || MoM: {tp_name}"
+    # Workshop invite subject is the thread root for this touchpoint.
+    # find_latest_in_conversation walks from this subject to the
+    # most recent reply in that conversation.
+    workshop_subject = (
+        f"{project_name} || \U0001f4c5 Workshop Invite \u2013 {tp_name}"
+    )
+
+    # Subject for fallback fresh send (if no thread found)
+    subject = workshop_subject
 
     html_body = _render_mom_pointer_html(tp_name, items_display)
     today_str = datetime.now().strftime("%B %d, %Y")
 
     final_html = (
-        "<html><body style='font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;"
-        "color:#1e293b;background:#f8fafc;padding:30px;'>"
+        "<html><body style='font-family:-apple-system,BlinkMacSystemFont,"
+        "Segoe UI,Roboto,sans-serif;color:#1e293b;background:#f8fafc;padding:30px;'>"
         "<div style='max-width:700px;margin:0 auto;background:white;border-radius:8px;"
-        "box-shadow:0 4px 6px rgba(0,0,0,0.05);overflow:hidden;border-top:4px solid #4338ca;'>"
-        f"<div style='padding:30px;'>"
-        f"<h2 style='margin:0 0 10px;color:#0f172a;font-size:18px;'>MoM Action Items Reminder</h2>"
-        f"<p style='color:#64748b;font-size:13px;margin:0 0 20px;'>{tp_name} &mdash; {today_str}</p>"
+        "box-shadow:0 4px 6px rgba(0,0,0,0.05);overflow:hidden;"
+        "border-top:4px solid #4338ca;'>"
+        "<div style='padding:30px;'>"
+        f"<h2 style='margin:0 0 10px;color:#0f172a;font-size:18px;'>"
+        f"MoM Action Items Reminder</h2>"
+        f"<p style='color:#64748b;font-size:13px;margin:0 0 20px;'>"
+        f"{tp_name} &mdash; {today_str}</p>"
         f"<div style='line-height:1.6;font-size:14px;'>{html_body}</div>"
-        f"</div>"
+        "</div>"
         "<div style='padding:15px;text-align:center;background:#f8fafc;"
         "border-top:1px solid #e2e8f0;font-size:11px;color:#94a3b8;'>"
-        "Automated reminder via <strong>SDGNext Command Center</strong></div>"
-        "</div></body></html>"
+        "Automated reminder via <strong>SDGNext Command Center</strong>"
+        "</div></div></body></html>"
     )
 
     if not to_emails and not cc_emails:
         return False
 
-    # --- Try reply-based threading (Outlook + Gmail) ---
-    original_graph_id = find_sent_message(subject)
+    # Find the latest message in this touchpoint's conversation thread
+    latest_graph_id = find_latest_in_conversation(workshop_subject)
 
-    if original_graph_id:
-        # Found the original MoM in Sent Items → reply to it
-        print(f"[{datetime.now()}] TP {tp.id}: Found original MoM in Sent Items, sending as reply...")
+    if latest_graph_id:
+        print(f"[{datetime.now()}] TP {tp.id}: nudge replying on "
+              f"latest message in thread.")
         result = reply_to_sent_message(
-            original_message_id=original_graph_id,
+            original_message_id=latest_graph_id,
             html_body=final_html,
             to_recipients=to_emails,
             cc_recipients=cc_emails if cc_emails else None
         )
     else:
-        # Original not found → fallback to fresh send (threads in Gmail via subject)
-        print(f"[{datetime.now()}] TP {tp.id}: Original MoM not in Sent Items, sending fresh.")
+        print(f"[{datetime.now()}] TP {tp.id}: no thread found, "
+              f"sending fresh.")
         result = send_graph_email(
             to_recipients=to_emails,
             subject=subject,
@@ -442,12 +454,13 @@ def _send_mom_pointer_email(db, tp, items_display, to_emails, cc_emails, anchor_
         )
 
     if result["success"]:
-        print(f"[{datetime.now()}] MoM-pointer nudge sent for TP {tp.id} ({tp_name})")
+        print(f"[{datetime.now()}] MoM-pointer nudge sent for "
+              f"TP {tp.id} ({tp_name})")
         return True
-    else:
-        print(f"[{datetime.now()}] Failed to send MoM-pointer nudge for TP {tp.id}: "
-              f"{result['error']}")
-        return False
+
+    print(f"[{datetime.now()}] Failed to send MoM-pointer nudge "
+          f"for TP {tp.id}: {result['error']}")
+    return False
 
 
 def _process_touchpoint_mom_nudge(db, touchpoint_id, today, force=False):

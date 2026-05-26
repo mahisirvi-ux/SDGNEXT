@@ -3,9 +3,8 @@ from datetime import date, timedelta, datetime
 from collections import defaultdict
 from app.core.database import SessionLocal
 from app.models.domain import IntegrationTouchpoint, IDRFunctional, IDRTechnical, TeamMaster, DepartmentMaster, IDRActionLog, Project
-from app.core.graph_mailer import send_graph_email, build_threading_headers, create_teams_meeting
-# --- PRE-REQUISITE TEMPLATES (HTML Formatted) ---
-# --- PRE-REQUISITE TEMPLATES (HTML Formatted) ---
+from app.core.graph_mailer import send_graph_email, build_threading_headers, create_teams_meeting, find_sent_message, reply_to_sent_message
+
 PRE_REQS = {
     "api": """
     <div style="font-size: 12px; color: #475569; margin-top: 10px; line-height: 1.5;">
@@ -133,48 +132,18 @@ def _parse_invite_msg_id(log):
         if part.startswith("MSG_ID="):
             return part.split("=", 1)[1]
     return None
+def _parse_graph_msg_id(log):
+    """Extract Graph message ID from WORKSHOP_INVITE_SENT log comment.
+    Returns None if absent (legacy logs won't have it)."""
+    if not log or not log.comment:
+        return None
+    for part in log.comment.split(";"):
+        if part.startswith("GRAPH_MSG_ID="):
+            val = part.split("=", 1)[1].strip()
+            return val if val else None
+    return None
 
 
-def _build_thread_headers(db, items):
-    """Build RFC 5322 threading headers from prior WORKSHOP_INVITE_SENT logs.
-
-    Returns (in_reply_to, references_chain) or (None, None) if no prior
-    thread exists for this department.
-
-    Per RFC 5322 \'a73.6.4:
-      - References: space-separated list of ALL prior Message-IDs in the
-        thread, ordered oldest-first. Gmail and Outlook use this to
-        reconstruct the full conversation tree.
-      - In-Reply-To: the single most-recent Message-ID this email is
-        directly replying to.
-
-    Since each department email maps to one logical thread (all workshop
-    invites for the same project+department thread together), we collect
-    ALL prior MSG_IDs from WORKSHOP_INVITE_SENT logs for the touchpoints
-    in this group, deduplicated and ordered by created_at ascending.
-
-    Note: touchpoint IDs are globally unique (auto-increment PK), so
-    filtering by tp_ids that came from a project-scoped query is
-    sufficient project scoping. No extra project_id filter needed.
-    """
-    tp_ids = [item["tp_id"] for item in items]
-    prior_logs = db.query(IDRActionLog).filter(
-        IDRActionLog.touchpoint_id.in_(tp_ids),
-        IDRActionLog.action_type == "WORKSHOP_INVITE_SENT"
-    ).order_by(IDRActionLog.created_at.asc()).all()
-
-    msg_ids = []
-    for log in prior_logs:
-        mid = _parse_invite_msg_id(log)
-        if mid and mid not in msg_ids:
-            msg_ids.append(mid)
-
-    if not msg_ids:
-        return None, None
-
-    in_reply_to = msg_ids[-1]
-    references_chain = " ".join(msg_ids)
-    return in_reply_to, references_chain
 
 
 def send_workshop_invites(project_id: int):
@@ -198,7 +167,7 @@ def send_workshop_invites(project_id: int):
 
 
 def _run_invites(db, project_id):
-    """Core invite logic."""
+    """Core invite logic — sends one email PER TOUCHPOINT."""
     # 1. Identity lookup
     identity_rows = db.query(TeamMaster, DepartmentMaster).join(
         DepartmentMaster, TeamMaster.dept_id == DepartmentMaster.dept_id
@@ -230,25 +199,33 @@ def _run_invites(db, project_id):
         IntegrationTouchpoint.project_id == project_id,
         IDRTechnical.start_date >= tomorrow_start,
         IDRTechnical.start_date < day_after_start,
-        IDRTechnical.tech_status.notin_(["Completed", "Document Review", "Pending Document"])
+        IDRTechnical.tech_status.notin_(
+            ["Completed", "Document Review", "Pending Document"]
+        )
     ).order_by(IDRTechnical.start_date.asc()).all()
 
     print(f"[{datetime.now()}] Query returned {len(results)} touchpoint(s) for tomorrow.")
     for tp, func, tech in results:
         ow = func.owner if func else "NO_FUNC_ROW"
-        print(f"  - \'{tp.name}\' | owner=\'{ow}\' | status=\'{tech.tech_status}\' | start={tech.start_date}")
+        print(f"  - '{tp.name}' | owner='{ow}' | "
+              f"status='{tech.tech_status}' | start={tech.start_date}")
 
     if not results:
         msg = f"No workshops scheduled for {tomorrow_str} in this project."
         print(f"[{datetime.now()}] {msg}")
-        return {"status": "success", "emails_sent": 0, "skipped_duplicates": 0,
-                "rescheduled_count": 0, "message": msg}
+        return {"status": "success", "emails_sent": 0,
+                "skipped_duplicates": 0, "rescheduled_count": 0,
+                "message": msg}
 
-    # 3. Group by department + reschedule detection
-    dept_groups = {}
-    unmapped_names = set()
+    # 3. Resolve project_name once
+    project = db.query(Project).filter(Project.id == project_id).first()
+    project_name = project.project_name if project else "Project"
+
+    # 4. Send one email per touchpoint
+    emails_sent = 0
     skipped_count = 0
     rescheduled_count = 0
+    unmapped_names = set()
 
     for tp, func, tech in results:
         owner_raw = (getattr(func, "owner", None) or "").strip() if func else ""
@@ -259,12 +236,14 @@ def _run_invites(db, project_id):
         if not owner_identity:
             if owner_raw:
                 unmapped_names.add(owner_raw)
-                print(f"[{datetime.now()}] SKIP \'{tp.name}\': owner \'{owner_raw}\' not in team_master")
+                print(f"[{datetime.now()}] SKIP '{tp.name}': "
+                      f"owner '{owner_raw}' not in team_master")
             else:
-                print(f"[{datetime.now()}] SKIP \'{tp.name}\': no owner (missing IDRFunctional?)")
+                print(f"[{datetime.now()}] SKIP '{tp.name}': "
+                      f"no owner (missing IDRFunctional?)")
             continue
 
-        # Reschedule detection
+        # Reschedule detection per touchpoint
         current_date = tech.start_date.date()
         last_log = db.query(IDRActionLog).filter(
             IDRActionLog.touchpoint_id == tp.id,
@@ -280,8 +259,9 @@ def _run_invites(db, project_id):
         else:
             invite_kind = "rescheduled"
 
-        print(f"[{datetime.now()}] \'{tp.name}\': prior={prior_date}, "
-              f"current={current_date}, status={tech.tech_status} -> {invite_kind}")
+        print(f"[{datetime.now()}] '{tp.name}': prior={prior_date}, "
+              f"current={current_date}, status={tech.tech_status} "
+              f"-> {invite_kind}")
 
         if invite_kind == "duplicate":
             skipped_count += 1
@@ -289,41 +269,42 @@ def _run_invites(db, project_id):
         if invite_kind == "rescheduled":
             rescheduled_count += 1
 
-        # Department grouping
-        dept_id = owner_identity["dept_id"]
-        if dept_id not in dept_groups:
-            dept_groups[dept_id] = {
-                "dept_name": owner_identity["dept_name"],
-                "dept_email": owner_identity["dept_email"],
-                "owner_names": set(), "owner_emails": set(),
-                "crm_names": set(), "crm_emails": set(),
-                "items": [],
-            }
+        # Build recipient set for this touchpoint
+        to_set = {owner_identity["person_email"]}
 
-        grp = dept_groups[dept_id]
-        grp["owner_names"].add(owner_identity["display_name"])
-        grp["owner_emails"].add(owner_identity["person_email"])
+        tech_identity = person_lookup.get(tech_owner_raw.lower()) if tech_owner_raw else None
+        if tech_identity:
+            to_set.add(tech_identity["person_email"])
 
-        if tech_owner_raw:
-            ti = person_lookup.get(tech_owner_raw.lower())
-            if ti:
-                grp["crm_names"].add(ti["display_name"])
-                grp["crm_emails"].add(ti["person_email"])
-        if mod_owner_raw:
-            mi = person_lookup.get(mod_owner_raw.lower())
-            if mi:
-                grp["crm_names"].add(mi["display_name"])
-                grp["crm_emails"].add(mi["person_email"])
+        mod_identity = person_lookup.get(mod_owner_raw.lower()) if mod_owner_raw else None
+        if mod_identity:
+            to_set.add(mod_identity["person_email"])
+
+        dept_email = owner_identity["dept_email"]
+        dept_name = owner_identity["dept_name"]
+
+        to_list = sorted(to_set)
+        cc_list = [dept_email] if (dept_email and dept_email not in to_set) else []
+
+        # Display names for the participants block
+        owner_display = owner_identity["display_name"]
+        crm_names = set()
+        if tech_identity:
+            crm_names.add(tech_identity["display_name"])
+        if mod_identity:
+            crm_names.add(mod_identity["display_name"])
+        crm_str = ", ".join(sorted(crm_names)) if crm_names else "\u2014"
 
         time_window = _fmt_time(tech)
         prior_date_str = None
         if invite_kind == "rescheduled" and prior_date:
             prior_date_str = prior_date.strftime("%B %d, %Y")
 
-        grp["items"].append({
-            "name": tp.name, "tp_id": tp.id,
+        item = {
+            "name": tp.name,
+            "tp_id": tp.id,
             "module": (func.module if func else None) or "-",
-            "owner": owner_identity["display_name"],
+            "owner": owner_display,
             "integration": (tech.integration_type or "unassigned").upper(),
             "tech_owner": tech_owner_raw or "-",
             "functional_owner": mod_owner_raw or "-",
@@ -331,21 +312,32 @@ def _run_invites(db, project_id):
             "invite_kind": invite_kind,
             "prior_date_str": prior_date_str,
             "workshop_date_iso": current_date.isoformat(),
-        })
+        }
 
-    for name in unmapped_names:
-        print(f"[{datetime.now()}] Owner \'{name}\' not in team_master.")
-
-    # 4. Send per department
-    emails_sent = 0
-    for dept_id, grp in dept_groups.items():
-        if _send_dept_email(db, project_id, dept_id, grp, tomorrow, tomorrow_str):
+        success = _send_tp_email(
+            db=db,
+            project_id=project_id,
+            project_name=project_name,
+            tp=tp,
+            tech=tech,
+            item=item,
+            dept_name=dept_name,
+            owner_display=owner_display,
+            crm_str=crm_str,
+            to_list=to_list,
+            cc_list=cc_list,
+            tomorrow=tomorrow,
+            tomorrow_str=tomorrow_str,
+        )
+        if success:
             emails_sent += 1
 
-    # Response
+    for name in unmapped_names:
+        print(f"[{datetime.now()}] Owner '{name}' not in team_master.")
+
     parts = []
     if emails_sent > 0:
-        parts.append(f"Invites sent for {emails_sent} department(s)")
+        parts.append(f"Invites sent for {emails_sent} touchpoint(s)")
     if rescheduled_count > 0:
         parts.append(f"{rescheduled_count} marked as rescheduled")
     if skipped_count > 0:
@@ -354,7 +346,8 @@ def _run_invites(db, project_id):
 
     return {"status": "success", "emails_sent": emails_sent,
             "skipped_duplicates": skipped_count,
-            "rescheduled_count": rescheduled_count, "message": message}
+            "rescheduled_count": rescheduled_count,
+            "message": message}
 
 
 def _fmt_time(tech):
@@ -368,123 +361,122 @@ def _fmt_time(tech):
     return s
 
 
-def _send_dept_email(db, project_id, dept_id, grp, tomorrow, tomorrow_str):
-    """Send one department's workshop invite email. Returns True on success.
+def _send_tp_email(db, project_id, project_name, tp, tech, item,
+                   dept_name, owner_display, crm_str,
+                   to_list, cc_list, tomorrow, tomorrow_str):
+    """Send one workshop invite email for a single touchpoint.
 
-    Threading strategy:
-    - Subject is date-free and stable per (project, department) so Gmail
-      groups all invites for the same dept into one conversation.
-    - In-Reply-To and References are set from prior WORKSHOP_INVITE_SENT
-      logs for ALL emails (not just rescheduled), so even newly-added
-      touchpoints thread into the existing conversation.
-        """
-    # Resolve project_name for email subject prefix (one query per dept send)
-    project = db.query(Project).filter(Project.id == project_id).first()
-    project_name = project.project_name if project else "Project"
-
-    dept_name = grp["dept_name"]
-    dept_email = grp["dept_email"]
-    items = grp["items"]
-    if not items:
+    Threading: subject is stable per (project, touchpoint_name) so
+    MoM and follow-up nudges can reply onto this thread.
+    The Graph message ID is stored in WORKSHOP_INVITE_SENT log so
+    MoM send and nudge can use reply_to_sent_message directly.
+    """
+    if not to_list:
+        print(f"[{datetime.now()}] No recipients for '{tp.name}'. Skip.")
         return False
 
-    all_to = set(grp["owner_emails"]) | set(grp["crm_emails"])
-    if not all_to:
-        print(f"[{datetime.now()}] No To emails for \'{dept_name}\'. Skip.")
-        return False
+    invite_kind = item["invite_kind"]
+    is_resched = invite_kind == "rescheduled"
 
-    bank_str = ", ".join(sorted(grp["owner_names"]))
-    crm_str = ", ".join(sorted(grp["crm_names"])) if grp["crm_names"] else "\u2014"
+    # CRITICAL: subject is stable per (project, touchpoint_name).
+    # MoM send and nudges use this exact subject to anchor the thread.
+    # Do NOT include dates or invite counts in the subject.
+    subject = f"{project_name} || \U0001f4c5 Workshop Invite \u2013 {tp.name}"
 
-    resched_items = [i for i in items if i.get("invite_kind") == "rescheduled"]
-    has_resched = len(resched_items) > 0
+    # For reschedule: find the prior invite's Graph message ID to reply onto
+    original_graph_id = None
+    if is_resched:
+        last_log = db.query(IDRActionLog).filter(
+            IDRActionLog.touchpoint_id == tp.id,
+            IDRActionLog.action_type == "WORKSHOP_INVITE_SENT"
+        ).order_by(IDRActionLog.created_at.desc()).first()
+        if last_log:
+            original_graph_id = _parse_graph_msg_id(last_log)
 
-    # CRITICAL: Subject is intentionally date-free. Gmail threads emails
-    # by normalized subject + Message-ID references. If the subject
-    # changes (e.g., when a workshop date changes on reschedule), Gmail
-    # starts a NEW conversation regardless of In-Reply-To/References
-    # headers. Keep this string stable per (project, department).
-    subject = f"{project_name} || \U0001f4c5 Workshop Invite \u2013 {dept_name}"
-
-    # HTML content
-    banner = _build_banner(resched_items)
-    participants = _participants_html(dept_name, bank_str, crm_str)
-    table = _touchpoint_table(items)
-    html = _full_html(tomorrow_str, len(items), banner, participants, table)
-    # Create one Teams meeting for this department's workshop
-    meeting_start = datetime.combine(tomorrow, datetime.min.time()).replace(hour=10)
+    # Teams meeting
+    meeting_start = datetime.combine(tomorrow,
+                                      datetime.min.time()).replace(hour=10)
+    if tech.start_date:
+        meeting_start = tech.start_date
     meeting_end = meeting_start + timedelta(hours=1)
-    meeting_subject = f"Workshop \u2013 {dept_name} ({tomorrow_str})"
-    teams_result = create_teams_meeting(
-        meeting_subject, meeting_start, meeting_end
-    )
+    if tech.end_date:
+        meeting_end = tech.end_date
+
+    meeting_subject = f"Workshop \u2013 {tp.name} ({tomorrow_str})"
+    teams_result = create_teams_meeting(meeting_subject,
+                                         meeting_start, meeting_end)
     join_url = teams_result["join_url"] if teams_result["success"] else None
     if not join_url:
         print(f"[{datetime.now()}] Teams meeting failed for "
-              f"'{dept_name}': {teams_result['error']}")
+              f"'{tp.name}': {teams_result['error']}")
+
+    # Build HTML — single-touchpoint layout
+    banner = ""
+    if is_resched and item.get("prior_date_str"):
+        banner = _build_banner([item])
+
+    participants = _participants_html(dept_name, owner_display, crm_str)
+    table = _touchpoint_table([item])
     join_block = _teams_join_block(join_url)
-    html = _full_html(tomorrow_str, len(items), banner, participants, table, join_block)
-            # Compose message
-    msg_id = f"<workshop-{dept_id}-{tomorrow.isoformat()}-{uuid.uuid4().hex[:8]}@sdgnext.local>"
+    html = _full_html(tomorrow_str, 1, banner, participants,
+                      table, join_block)
 
-    # Threading: apply to EVERY email that has prior logs for this dept,
-    # not just rescheduled ones. This ensures new touchpoints added to
-    # an existing department's workshop also thread correctly.
-    in_reply_to, references_chain = _build_thread_headers(db, items)
-
-    threading = build_threading_headers(
-        message_id=msg_id,
-        in_reply_to=in_reply_to,
-        references=references_chain
-    )
-
-    # Build recipient lists
-    to_list = sorted(all_to)
-    cc_list = [dept_email] if (dept_email and dept_email not in all_to) else None
-
-    # Send via Graph
-    result = send_graph_email(
-        to_recipients=to_list,
-        subject=subject,
-        html_body=html,
-        cc_recipients=cc_list,
-        internet_headers=threading if threading else None
-    )
+    # Send — reschedule replies on prior thread; fresh is a new send
+    if is_resched and original_graph_id:
+        print(f"[{datetime.now()}] '{tp.name}': rescheduled, "
+              f"replying on prior thread.")
+        result = reply_to_sent_message(
+            original_message_id=original_graph_id,
+            html_body=html,
+            to_recipients=to_list,
+            cc_recipients=cc_list if cc_list else None
+        )
+    else:
+        result = send_graph_email(
+            to_recipients=to_list,
+            subject=subject,
+            html_body=html,
+            cc_recipients=cc_list if cc_list else None
+        )
 
     if not result["success"]:
-        print(f"[{datetime.now()}] Graph send failed for '{dept_name}': {result['error']}")
+        print(f"[{datetime.now()}] Graph send failed for "
+              f"'{tp.name}': {result['error']}")
         return False
 
-    # Compute envelope count for action log (matches old behavior)
-    envelope_count = len(all_to)
-    if dept_email and dept_email not in all_to:
-        envelope_count += 1
+    # Capture the Graph message ID for MoM threading.
+    # find_sent_message looks up the just-sent email by subject
+    # so MoM and nudges can reply_to_sent_message on it.
+    graph_msg_id = find_sent_message(subject)
 
-    # Post-send: status update + action logs
-    for item in items:
-        tp_id = item.get("tp_id")
-        if not tp_id:
-            continue
-        tech_rec = db.query(IDRTechnical).filter(
-            IDRTechnical.touchpoint_id == tp_id
-        ).first()
-        if tech_rec and tech_rec.tech_status not in ["Completed", "Document Review", "Pending Document"]:
-            tech_rec.tech_status = "Scheduled"
-        db.add(IDRActionLog(
-            touchpoint_id=tp_id,
-            action_type="WORKSHOP_INVITE_SENT",
-            action_by="System (Workshop Mailer)",
-                comment=(
-                f"WORKSHOP_DATE={item['workshop_date_iso']};"
-                f"KIND={item['invite_kind']};"
-                f"RECIPIENTS_COUNT={envelope_count};"
-                f"MSG_ID={msg_id}"
-            )
-        ))
+    envelope_count = len(to_list) + len(cc_list)
+
+    # Status update + action log
+    tech_rec = db.query(IDRTechnical).filter(
+        IDRTechnical.touchpoint_id == tp.id
+    ).first()
+    if (tech_rec and tech_rec.tech_status not in
+            ["Completed", "Document Review", "Pending Document"]):
+        tech_rec.tech_status = "Scheduled"
+
+    comment = (
+        f"WORKSHOP_DATE={item['workshop_date_iso']};"
+        f"KIND={invite_kind};"
+        f"RECIPIENTS_COUNT={envelope_count}"
+    )
+    if graph_msg_id:
+        comment += f";GRAPH_MSG_ID={graph_msg_id}"
+
+    db.add(IDRActionLog(
+        touchpoint_id=tp.id,
+        action_type="WORKSHOP_INVITE_SENT",
+        action_by="System (Workshop Mailer)",
+        comment=comment
+    ))
     db.commit()
 
-    disp = ", ".join(sorted(grp["owner_names"] | grp["crm_names"]))
-    print(f"[{datetime.now()}] Sent for \'{dept_name}\' ({len(items)} tp) -> {disp}")
+    disp = ", ".join(to_list)
+    print(f"[{datetime.now()}] Sent invite for '{tp.name}' -> {disp}")
     return True
 
 

@@ -301,6 +301,76 @@ def find_sent_message(subject_filter, max_age_days=30):
 
     return messages[0].get("id")
 
+def find_latest_in_conversation(subject_filter):
+    """Find the most recent sent message in a touchpoint's conversation.
+
+    First locates the original message by exact subject, then fetches
+    all messages in that conversation and returns the most recent one.
+    This correctly handles Reply chains where subject gets 'RE:' prefix.
+
+    Returns the Graph message ID of the most recent message, or None.
+    """
+    try:
+        token = _get_access_token()
+    except Exception:
+        return None
+
+    cfg = _config()
+    sender_mailbox = cfg["sender_mailbox"]
+    base = f"https://graph.microsoft.com/v1.0/users/{sender_mailbox}"
+    auth_headers = {"Authorization": f"Bearer {token}"}
+
+    # Step 1: find the original message to get its conversationId
+    safe_subject = subject_filter.replace("'", "''")
+    orig_url = (
+        f"{base}/mailFolders/SentItems/messages"
+        f"?$filter=subject eq '{safe_subject}'"
+        f"&$top=1"
+        f"&$select=id,conversationId,sentDateTime"
+    )
+    try:
+        resp = requests.get(orig_url, headers=auth_headers, timeout=30)
+    except Exception:
+        return None
+
+    if resp.status_code != 200:
+        return None
+
+    messages = resp.json().get("value", [])
+    if not messages:
+        return None
+
+    conversation_id = messages[0].get("conversationId")
+    if not conversation_id:
+        return messages[0].get("id")
+
+    # Step 2: fetch all sent messages in this conversation,
+    # pick the most recent one
+    conv_url = (
+        f"{base}/mailFolders/SentItems/messages"
+        f"?$filter=conversationId eq '{conversation_id}'"
+        f"&$top=50"
+        f"&$select=id,sentDateTime,conversationId"
+    )
+    try:
+        resp = requests.get(conv_url, headers=auth_headers, timeout=30)
+    except Exception:
+        # Fall back to the original message
+        return messages[0].get("id")
+
+    if resp.status_code != 200:
+        return messages[0].get("id")
+
+    all_msgs = resp.json().get("value", [])
+    if not all_msgs:
+        return messages[0].get("id")
+
+    # Sort by sentDateTime descending, return most recent
+    all_msgs.sort(
+        key=lambda m: m.get("sentDateTime", ""),
+        reverse=True
+    )
+    return all_msgs[0].get("id")
 
 def reply_to_sent_message(original_message_id, html_body,
                           to_recipients=None, cc_recipients=None):
