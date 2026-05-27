@@ -19,7 +19,7 @@ Why PostgreSQL-based lookup (not Oracle DESCRIPTION search):
 
 import os
 import oracledb
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Body
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
 from app.core.database import get_db
@@ -33,6 +33,8 @@ router = APIRouter()
 
 OWNER_ID = 914
 ITEM_ID = 1
+DS_ITEM_ID = 2  # MashupIdList ITEMID for DATASOURCEID (separate from CONNECTIONID)
+FIELD_ITEM_ID = 3  # MashupIdList ITEMID for FIELDID (MASHUPDATASOURCEFIELD, separate counter)
 
 
 def _get_tp_data(tp_id: int, db: Session):
@@ -91,6 +93,77 @@ def _save_connection_id(db: Session, tech, connection_id: int):
     td["crmConnectionId"] = connection_id
     tech.technical_details = td
     flag_modified(tech, "technical_details")
+
+
+def _find_shared_connection_id(db: Session, current_tp_id: int, uat_url: str):
+    """Find if any OTHER touchpoint already has a crmConnectionId for
+    the same UAT URL. This handles the scenario where multiple
+    touchpoints share the same endpoint (same source system).
+
+    Returns int (shared connection_id) or None.
+    """
+    if not uat_url:
+        return None
+
+    # Query all IDRTechnical rows except the current touchpoint
+    all_techs = db.query(IDRTechnical).filter(
+        IDRTechnical.touchpoint_id != current_tp_id
+    ).all()
+
+    for other_tech in all_techs:
+        td = other_tech.technical_details
+        if not td or not isinstance(td, dict):
+            continue
+        other_url = (td.get("uatUrl") or "").strip()
+        other_cid = td.get("crmConnectionId")
+        if other_url == uat_url and other_cid is not None:
+            try:
+                return int(other_cid)
+            except (ValueError, TypeError):
+                continue
+
+    return None
+
+
+def _get_stored_datasource_id(tech):
+    """Read previously-assigned CRM DATASOURCEID from SDGNext PostgreSQL.
+
+    Returns int or None. Mirrors _get_stored_connection_id but for
+    the MASHUPDATASOURCE table.
+    """
+    if not tech or not tech.technical_details:
+        return None
+    td = tech.technical_details if isinstance(tech.technical_details, dict) else {}
+    dsid = td.get("crmDatasourceId")
+    if dsid is not None:
+        try:
+            return int(dsid)
+        except (ValueError, TypeError):
+            return None
+    return None
+
+
+def _save_datasource_id(db: Session, tech, datasource_id: int):
+    """Persist the CRM DATASOURCEID into technical_details JSON.
+
+    Mirrors _save_connection_id but for MASHUPDATASOURCE.
+    """
+    if not tech:
+        return
+    td = dict(tech.technical_details or {})
+    td["crmDatasourceId"] = datasource_id
+    tech.technical_details = td
+    flag_modified(tech, "technical_details")
+
+
+def _ds_row_exists(cursor, schema, datasource_id: int) -> bool:
+    """Check if MASHUPDATASOURCE row exists for this DATASOURCEID."""
+    cursor.execute(
+        f"SELECT 1 FROM {schema}.MASHUPDATASOURCE "
+        f"WHERE OWNERID = :owner AND DATASOURCEID = :dsid",
+        {"owner": OWNER_ID, "dsid": datasource_id}
+    )
+    return cursor.fetchone() is not None
 
 
 def _verify_oracle_row_exists(cursor, schema, connection_id):
@@ -281,10 +354,18 @@ def crm_mashup_insert(tp_id: int, db: Session = Depends(get_db)):
                 "API Name is empty. Fill in the API Name field in "
                 "Technical Details before pushing to CRM."
             )
-        )
+                )
 
     # PRIMARY CHECK: stored connection_id in our PostgreSQL
     stored_cid = _get_stored_connection_id(tech)
+
+    # SHARED CONNECTION CHECK: if no stored_cid for this touchpoint,
+    # check if another touchpoint with the same UAT URL already has one.
+    td = tech.technical_details if (tech and isinstance(tech.technical_details, dict)) else {}
+    uat_url = (td.get("uatUrl") or "").strip()
+    shared_cid = None
+    if not stored_cid and uat_url:
+        shared_cid = _find_shared_connection_id(db, tp_id, uat_url)
 
     schema = get_oracle_schema()
     conn = None
@@ -304,6 +385,26 @@ def crm_mashup_insert(tp_id: int, db: Session = Depends(get_db)):
                 {"owner": OWNER_ID, "cid": connection_id}
             )
             # Then delete parent (safe even if row was already deleted)
+            cursor.execute(
+                f"DELETE FROM {schema}.MASHUPCONNECTION "
+                f"WHERE OWNERID = :owner AND CONNECTIONID = :cid",
+                {"owner": OWNER_ID, "cid": connection_id}
+            )
+            _do_insert(cursor, schema, connection_id, api_name, tp_id)
+
+        elif shared_cid:
+            # SHARED path: another touchpoint already created this connection.
+            # Reuse the same CONNECTIONID. Update Oracle row with current data.
+            connection_id = shared_cid
+            is_update = True
+
+            # Delete child first (FK constraint)
+            cursor.execute(
+                f"DELETE FROM {schema}.MASHUPWSCONNECTION "
+                f"WHERE OWNERID = :owner AND CONNECTIONID = :cid",
+                {"owner": OWNER_ID, "cid": connection_id}
+            )
+            # Delete parent
             cursor.execute(
                 f"DELETE FROM {schema}.MASHUPCONNECTION "
                 f"WHERE OWNERID = :owner AND CONNECTIONID = :cid",
@@ -662,9 +763,285 @@ def crm_mashupws_insert(tp_id: int, db: Session = Depends(get_db)):
                 conn.rollback()
             except Exception:
                 pass
-        raise HTTPException(
+                raise HTTPException(
             status_code=500,
             detail=f"Oracle error during WS insert: {e}"
+        )
+    finally:
+        if conn:
+            conn.close()
+
+
+# ============================================================
+# MASHUPDATASOURCE — External Data Source
+# ============================================================
+
+@router.post("/api/crm/datasource/insert/{tp_id}")
+def crm_datasource_insert(
+    tp_id: int,
+    payload: dict = Body(...),
+    db: Session = Depends(get_db)
+):
+    """Idempotent insert into MASHUPDATASOURCE + MASHUPDATASOURCEFIELD.
+
+    First push: atomically increment MashupIdList (ITEMID=2),
+    insert new row, store crmDatasourceId in PostgreSQL.
+    Subsequent push: read stored crmDatasourceId, delete old
+    rows, insert fresh with same DATASOURCEID and reused FIELDIDs.
+    """
+    tp, tech, func = _get_tp_data(tp_id, db)
+
+    # Validate: crmConnectionId must exist
+    stored_cid = _get_stored_connection_id(tech)
+    if not stored_cid:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Push Connection first via API's Connection Save. "
+                "MASHUPCONNECTION must exist before creating a datasource."
+            )
+        )
+
+    # Extract payload fields
+    name = (payload.get("name") or "").strip()
+    source = (payload.get("source") or "").strip()
+    xslt = (payload.get("xslt") or "").strip()
+    data_xpath = (payload.get("data_xpath") or "response").strip()
+    output_fields = payload.get("output_fields") or []
+
+    if not name:
+        raise HTTPException(status_code=400, detail="Touchpoint name is required.")
+    if not source:
+        raise HTTPException(status_code=400, detail="Endpoint URL is required.")
+
+    # Check for stored datasource ID (idempotency)
+    stored_dsid = _get_stored_datasource_id(tech)
+
+    # Build cleaned output_fields list
+    new_field_names = [str(fn).strip() for fn in output_fields if str(fn).strip()]
+
+    schema = get_oracle_schema()
+    conn = None
+    try:
+        conn = get_oracle_connection()
+        cursor = conn.cursor()
+
+        # Map of existing field NAME → FIELDID (populated on update path)
+        existing_field_map = {}
+
+        if stored_dsid:
+            # UPDATE path: reuse same DATASOURCEID
+            datasource_id = stored_dsid
+            is_update = _ds_row_exists(cursor, schema, stored_dsid)
+
+            if is_update:
+                # Query existing fields to build NAME → FIELDID map
+                cursor.execute(
+                    f"SELECT NAME, FIELDID FROM {schema}.MASHUPDATASOURCEFIELD "
+                    f"WHERE OWNERID = :owner AND DATASOURCEID = :dsid",
+                    {"owner": OWNER_ID, "dsid": datasource_id}
+                )
+                for row in cursor.fetchall():
+                    existing_field_map[row[0]] = int(row[1])
+
+                # Delete ALL child field rows first (will re-insert with same FIELDIDs)
+                cursor.execute(
+                    f"DELETE FROM {schema}.MASHUPDATASOURCEFIELD "
+                    f"WHERE OWNERID = :owner AND DATASOURCEID = :dsid",
+                    {"owner": OWNER_ID, "dsid": datasource_id}
+                )
+                # Then delete parent datasource row
+                cursor.execute(
+                    f"DELETE FROM {schema}.MASHUPDATASOURCE "
+                    f"WHERE OWNERID = :owner AND DATASOURCEID = :dsid",
+                    {"owner": OWNER_ID, "dsid": datasource_id}
+                )
+        else:
+            # INSERT path: first push — atomically get new ID
+            is_update = False
+            new_id_var = cursor.var(oracledb.NUMBER)
+            cursor.execute(
+                f"UPDATE {schema}.MASHUPIDLIST "
+                f"SET LASTID = LASTID + 1 "
+                f"WHERE OWNERID = :owner AND ITEMID = :item "
+                f"RETURNING LASTID INTO :new_id",
+                {
+                    "owner": OWNER_ID,
+                    "item": DS_ITEM_ID,
+                    "new_id": new_id_var
+                }
+            )
+            datasource_id = int(new_id_var.getvalue()[0])
+
+        # INSERT MASHUPDATASOURCE row
+        cursor.execute(
+            f"""INSERT INTO {schema}.MASHUPDATASOURCE (
+                OWNERID, DATASOURCEID, CONNECTIONID, NAME,
+                SOURCETYPE, SOURCE, RETURNTYPE, RETURNMODE,
+                DATAXPATH, CREATEDBY, CREATEDON, LASTMODIFIEDBY, LASTMODIFIEDON,
+                ERRORCODEPATH, ERRORSTRINGPATH, PRIMARYFIELD,
+                ISUTCDATETIME, ERRORCODEFIELDID, ERRORMSGFIELDID,
+                TRANSACTIONFIELD, SUCCESSCODE, INDEXPARAMETER,
+                BATCHSIZE, TOTALCOUNTXPATH, BATCHPARAMETER,
+                USERIDPARAMETER, CURRENTTIMEFIELD, INPUTDATETIMEFORMAT,
+                ENABLELOGGING, RETENTIONPERIOD, INITIALSYMBOLS, RENAMESYMBOLS,
+                DESCRIPTION, XSLT, XSLTREFERENCEFIELD,
+                RESTINVOKEMETHOD, USEENCRYPTION, ENCRYPTIONKEY,
+                RESTINPUTMODE, IMAGEHEIGHT, IMAGEWIDTH, IMAGEFORMAT,
+                XSLTTAG, CHECKFORERROR, CURRENTRECORDCOUNTPATH,
+                REPLYQUEUE, WAITINTERVAL, REMOTEQUEUEMANAGERNAME,
+                STRINGMODE, LOGINIDFIELD, BRANCHCODEPARAMETER,
+                BRANCHIDPARAMETER, BRANCHNAMEPARAMETER,
+                IPADDRESSFIELD, EMPLOYEECODEFIELD, INPUTXSLT,
+                PASSWORD, ISSECURITYENABLED, SERVICETYPEID,
+                IGNOREHTMLENCODE, FAULTCODEXPATH, FAULTMESSAGEXPATH,
+                FAULTXSLT, ENCODING, SKIPNODEEXCEPTION,
+                PREVPAGETOKENXPATH, NEXTPAGETOKENXPATH,
+                ADDITIONALSETTINGS, OUTPUTLOGXSLT, USEDBY,
+                KAFKASOURCETYPE, EXCEPTIONMESSAGE, ADAPTERID,
+                UNIQUEEDSNAME, ISAUDITENABLE, ISMETRICSENABLE,
+                ENABLEDATASOURCEMATRIX, OWNERIDPARAMETER
+            ) VALUES (
+                :ownerid, :datasourceid, :connectionid, :name,
+                0, :source, 13, 1,
+                :dataxpath, '1', SYSDATE, '1', SYSDATE,
+                NULL, NULL, '-1',
+                1, -1, -1,
+                NULL, NULL, NULL,
+                0, NULL, NULL,
+                NULL, NULL, NULL,
+                1, 7, NULL, NULL,
+                NULL, :xslt, NULL,
+                2, 0, NULL,
+                4, 0, 0, NULL,
+                'root', 0, NULL,
+                NULL, 0, NULL,
+                0, NULL, NULL,
+                NULL, NULL,
+                NULL, NULL, NULL,
+                NULL, NULL, NULL,
+                0, NULL, NULL,
+                NULL, NULL, NULL,
+                NULL, NULL,
+                NULL, NULL, 0,
+                0, NULL, NULL,
+                NULL, 0, 0,
+                NULL, NULL
+            )""",
+            {
+                "ownerid": OWNER_ID,
+                "datasourceid": datasource_id,
+                "connectionid": stored_cid,
+                "name": name,
+                "source": source,
+                "dataxpath": data_xpath,
+                "xslt": xslt,
+            }
+        )
+
+        # INSERT MASHUPDATASOURCEFIELD rows
+        # - Existing fields (same NAME): reuse their FIELDID, no increment
+        # - New fields: generate new FIELDID from MashupIdList ITEMID=3
+        fields_created = 0
+        fields_reused = 0
+        for field_name_clean in new_field_names:
+            if field_name_clean in existing_field_map:
+                # Reuse existing FIELDID
+                field_id = existing_field_map[field_name_clean]
+                fields_reused += 1
+            else:
+                # New field — atomically increment MashupIdList ITEMID=3
+                field_id_var = cursor.var(oracledb.NUMBER)
+                cursor.execute(
+                    f"UPDATE {schema}.MASHUPIDLIST "
+                    f"SET LASTID = LASTID + 1 "
+                    f"WHERE OWNERID = :owner AND ITEMID = :item "
+                    f"RETURNING LASTID INTO :new_id",
+                    {
+                        "owner": OWNER_ID,
+                        "item": FIELD_ITEM_ID,
+                        "new_id": field_id_var
+                    }
+                )
+                field_id = int(field_id_var.getvalue()[0])
+            cursor.execute(
+                f"""INSERT INTO {schema}.MASHUPDATASOURCEFIELD (
+                    OWNERID, FIELDID, DATASOURCEID,
+                    NAME, LABEL, TYPE,
+                    ISSEARCHABLE, ISFILTERABLE, ISDISPLAY,
+                    XPATH, ADDEDBY, ADDEDON,
+                    MASKSTARTPOS, MASKTOTALCHAR, MASKCHAR,
+                    APPLYMASKONNEWEDIT, MASKFORMATID, EDSRESOLVERID,
+                    GROUPID, PARENTGROUPID, MAXLENGTH,
+                    ADDITIONALSETTINGS
+                ) VALUES (
+                    :ownerid, :fieldid, :datasourceid,
+                    :name, :label, 'String',
+                    0, 0, 0,
+                    :xpath, '1', SYSDATE,
+                    -1, -1, '*',
+                    0, -1, -1,
+                    0, 0, -1,
+                    '{"MongoOutputFieldMode":3}'
+                )""",
+                {
+                    "ownerid": OWNER_ID,
+                    "fieldid": field_id,
+                    "datasourceid": datasource_id,
+                    "name": field_name_clean,
+                    "label": field_name_clean,
+                    "xpath": field_name_clean,
+                }
+            )
+            fields_created += 1
+
+        conn.commit()
+
+        # Store datasource_id in PostgreSQL for idempotency
+        _save_datasource_id(db, tech, datasource_id)
+
+        # Action log
+        action = "updated" if is_update else "created"
+        new_fields = fields_created - fields_reused
+        db.add(IDRActionLog(
+            touchpoint_id=tp_id,
+            action_type="Manual Update",
+            action_by="User",
+            comment=(
+                f"CRM MASHUPDATASOURCE {action}. "
+                f"DATASOURCEID={datasource_id}, CONNECTIONID={stored_cid}, "
+                f"fields={fields_created} (reused={fields_reused}, new={new_fields})"
+            )
+        ))
+        db.commit()
+
+        return {
+            "success": True,
+            "datasource_id": datasource_id,
+            "connection_id": stored_cid,
+            "fields_created": fields_created,
+            "fields_reused": fields_reused,
+            "fields_new": new_fields,
+            "is_update": is_update,
+            "message": (
+                f"MASHUPDATASOURCE {'updated' if is_update else 'created'} "
+                f"successfully. DATASOURCEID = {datasource_id}, "
+                f"{fields_created} fields mapped "
+                f"({fields_reused} reused, {new_fields} new)."
+            )
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        if conn:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+        raise HTTPException(
+            status_code=500,
+            detail=f"Oracle error during datasource insert: {e}"
         )
     finally:
         if conn:

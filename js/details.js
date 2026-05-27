@@ -1,4 +1,5 @@
 let currentData = null;
+let edsOutputFields = [];
 
 // ==========================================
 // TAB SWITCHING
@@ -928,8 +929,11 @@ async function startEdsAnimation() {
         xsltStr = "";
     }
     
-    document.getElementById('eds-xslt').value = xsltStr;
-    
+        document.getElementById('eds-xslt').value = xsltStr;
+
+    // Store output fields at module level for finishEdsConfiguration
+    edsOutputFields = combinedKeys;
+
     // Build Output Grid
     const gridContainer = document.getElementById('eds-output-grid');
     if (combinedKeys && combinedKeys.length > 0) {
@@ -967,9 +971,9 @@ function edsShowTab(tabNum) {
 
     document.getElementById('eds-prev-btn').classList.toggle('hidden', tabNum === 1);
     const nextBtn = document.getElementById('eds-next-btn');
-    if (tabNum === 3) {
+        if (tabNum === 3) {
         nextBtn.innerText = "Finish Configuration";
-        nextBtn.onclick = () => document.getElementById('eds-config-modal').classList.add('hidden');
+        nextBtn.onclick = () => finishEdsConfiguration();
     } else {
         nextBtn.innerText = "Next Step";
         nextBtn.onclick = () => edsSwitchTab(1);
@@ -1070,8 +1074,93 @@ async function saveApiConnection() {
         statusDiv.className = "text-xs font-medium px-4 py-2 " +
             "rounded-md w-full text-center max-w-md " +
             "bg-red-50 text-red-700 border border-red-200";
-        statusDiv.textContent = "\u2717 " + err.message;
+                statusDiv.textContent = "\u2717 " + err.message;
         saveBtn.disabled = false;
         saveBtn.textContent = "Save";
+    }
+}
+
+// ================================================
+// EDS Configuration — Finish button handler
+// Inserts MASHUPDATASOURCE into Oracle.
+// Idempotent: one touchpoint = one datasource row.
+// ================================================
+async function finishEdsConfiguration() {
+    const tp = currentData;
+    if (!tp) {
+        alert("Touchpoint data not loaded.");
+        return;
+    }
+
+    // Validate: XSLT must be generated
+    const xslt = (document.getElementById('eds-xslt').value || "").trim();
+    if (!xslt) {
+        alert("XSLT has not been generated yet. Wait for the AI Agent to complete.");
+        return;
+    }
+
+    const nextBtn = document.getElementById('eds-next-btn');
+    const statusText = document.getElementById('eds-status-text');
+
+    // Disable immediately to prevent duplicate requests
+    nextBtn.disabled = true;
+    nextBtn.innerText = "Saving...";
+    statusText.innerText = "Inserting MASHUPDATASOURCE...";
+    statusText.className = "text-xs text-blue-600 font-bold italic";
+
+    // Gather form values
+    const name = (document.getElementById('eds-name').value || "").trim();
+    const source = (document.getElementById('eds-method-name').value || "").trim();
+    const dataXpath = (document.getElementById('eds-xpath').value || "response").trim();
+
+    try {
+        const resp = await fetch(
+            `/api/crm/datasource/insert/${tp.id}`,
+            {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({
+                    name: name,
+                    source: source,
+                    xslt: xslt,
+                    data_xpath: dataXpath,
+                    output_fields: edsOutputFields
+                })
+            }
+        );
+        const data = await resp.json();
+
+        if (!resp.ok || !data.success) {
+            throw new Error(
+                data.detail || data.message ||
+                "MASHUPDATASOURCE insert failed."
+            );
+        }
+
+        const action = data.is_update ? "updated" : "created";
+
+                // Success state
+        const fieldsCount = data.fields_created || 0;
+        statusText.className = "text-xs text-emerald-600 font-bold italic";
+        statusText.innerText =
+            `\u2713 Datasource ${action} (ID: ${data.datasource_id}), ` +
+            `${fieldsCount} fields mapped`;
+        nextBtn.innerText = "Done \u2713";
+
+        // Auto-close after 2 seconds
+        setTimeout(() => {
+            document.getElementById('eds-config-modal').classList.add('hidden');
+            nextBtn.disabled = false;
+            nextBtn.innerText = "Finish Configuration";
+            statusText.innerText = "Configuration Ready. Review steps.";
+            statusText.className = "text-xs text-indigo-600 font-bold italic";
+        }, 2000);
+
+    } catch (err) {
+        // Error state — keep modal open for retry
+        statusText.className = "text-xs text-red-600 font-bold italic";
+        statusText.innerText = "\u2717 " + err.message;
+        nextBtn.disabled = false;
+        nextBtn.innerText = "Finish Configuration";
     }
 }

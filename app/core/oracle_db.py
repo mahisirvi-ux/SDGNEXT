@@ -1,11 +1,27 @@
 """Oracle DB connection for CRMNext integration.
 
-Uses the oracledb thin driver (no Oracle Client install needed).
+Uses oracledb in THICK mode (Oracle Instant Client required) to support
+the national character set (NCLOB columns) used by the CRMNext schema.
 Credentials loaded from .env via python-dotenv.
 """
 
 import os
 import oracledb
+
+# Initialize thick mode once at module load.
+# Thick mode is required because the CRMNext Oracle DB uses national
+# character set id 871 for NCLOB columns (XSLT etc.) which is not
+# supported by python-oracledb thin mode (DPY-3012).
+_INSTANT_CLIENT_DIR = os.environ.get(
+    "ORACLE_INSTANT_CLIENT",
+    r"D:\oracle_instantclient\instantclient_23_4"
+)
+
+try:
+    oracledb.init_oracle_client(lib_dir=_INSTANT_CLIENT_DIR)
+except Exception as e:
+    # Already initialized (e.g. module reloaded) or path issue
+    print(f"[oracle_db] init_oracle_client note: {e}")
 
 
 def get_oracle_connection():

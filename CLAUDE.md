@@ -139,6 +139,32 @@ Excluded emails (no prefix):
 - `\U0001f4ca SDGNext Daily Summary - {date}` \u2014 spans all projects
 - `\U0001f4d1 Automated Project MOM - {date}` \u2014 spans all projects
 
+### CRM Integration (Oracle)
+
+Four Oracle tables are populated sequentially from the touchpoint
+detail page:
+
+1. **MASHUPCONNECTION** — via Save on API's Connection modal
+2. **MASHUPWSCONNECTION** — via Save on API's Connection modal
+3. **MASHUPDATASOURCE** — via Finish Configuration on EDS modal
+4. **MASHUPDATASOURCEFIELD** — via Finish Configuration (one row
+   per output parameter, child of MASHUPDATASOURCE)
+
+IDs stored in PostgreSQL `technical_details` JSON:
+- `crmConnectionId`: generated from MashupIdList ITEMID=1
+- `crmDatasourceId`: generated from MashupIdList ITEMID=2
+- FIELDID: generated from MashupIdList ITEMID=3 (per-field, not stored
+  in PostgreSQL since multiple fields exist per touchpoint)
+
+All inserts are idempotent per touchpoint (DELETE + re-INSERT with same ID
+on subsequent pushes). Shared connections: touchpoints with the same
+`uatUrl` reuse the same CONNECTIONID (checked via `_find_shared_connection_id`).
+
+Endpoints (in `app/api/routes/crm.py`):
+- `POST /api/crm/mashup/insert/{tp_id}` — MASHUPCONNECTION
+- `POST /api/crm/mashupws/insert/{tp_id}` — MASHUPWSCONNECTION
+- `POST /api/crm/datasource/insert/{tp_id}` — MASHUPDATASOURCE + MASHUPDATASOURCEFIELD
+
 ### Mock Services
 
 A developer utility for stubbing bank APIs during integration testing.
