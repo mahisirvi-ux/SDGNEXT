@@ -5,6 +5,8 @@ from app.core.database import SessionLocal
 from app.models.domain import Project, IntegrationTouchpoint, IDRFunctional, IDRTechnical, TeamMaster, DepartmentMaster
 from app.rgt_engine import generate_rgt
 from app.core.email_dispatcher import send_rgt_invite
+from pydantic import BaseModel
+from app.core.ai_agent import generate_eds_request_template, generate_eds_xslt_config
 
 router = APIRouter()
 
@@ -149,4 +151,25 @@ def dispatch_tomorrow_rgts(project_name: str):
 def trigger_inbox_sync():
     """Manually triggers the IMAP listener to check for bank replies."""
     result = sync_bank_replies()
+    return result
+
+# --- NEW Pydantic Models for EDS ---
+class EdsTemplateRequest(BaseModel):
+    payload: str
+
+class EdsXsltRequest(BaseModel):
+    success_payload: str
+    error_payload: str
+
+# --- NEW Routes for EDS Generation ---
+@router.post("/api/integrations/eds/generate-template")
+def eds_generate_template(req: EdsTemplateRequest):
+    """Calls AI Agent to convert a raw payload into a ##KEY## template."""
+    template = generate_eds_request_template(req.payload)
+    return {"template": template}
+
+@router.post("/api/integrations/eds/generate-xslt")
+def eds_generate_xslt(req: EdsXsltRequest):
+    """Calls AI Agent to write XSLT logic and extract output parameters."""
+    result = generate_eds_xslt_config(req.success_payload, req.error_payload)
     return result

@@ -173,6 +173,21 @@ function populatePage(tp) {
                 mockBtn.style.display = '';
             }
         }
+                  
+        // NEW CODE: Configurator Button Logic
+        const isApi = (tp.integration || '').toLowerCase() === 'api';
+        const isDocReview =['document review', 'completed'].includes((tp.techStatus || '').toLowerCase());
+        const configBtn = document.getElementById('fd-btn-configurator');
+        
+        if (configBtn) {
+            if (isApi && isDocReview) {
+                configBtn.classList.remove('hidden');
+                configBtn.style.display = 'flex';
+            } else {
+                configBtn.classList.add('hidden');
+                configBtn.style.display = '';
+            }
+        }
 
         // Load attachments
         loadDocuments(tp.id);
@@ -295,7 +310,7 @@ async function saveFullDetails() {
         return `${d} ${t}`;
     };
 
-    try {
+        try {
         const response = await fetch(`/api/phase2/update/${id}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
@@ -307,10 +322,11 @@ async function saveFullDetails() {
                 technical_details: techDetails
             })
         });
-        if (response.ok) {
+        const result = await response.json();
+        if (response.ok && result.status === 'success') {
             window.location.reload();
         } else {
-            alert("Error saving details.");
+            alert("Error saving: " + (result.message || "Unknown error"));
             saveBtn.innerText = "Save Changes";
         }
     } catch (err) {
@@ -703,5 +719,359 @@ async function copyToClipboard(text) {
         alert('Copied!');
     } catch (err) {
         alert('Could not copy. Please copy manually: ' + text);
+    }
+}
+// ==========================================
+// CONFIGURATOR & EDS HELPERS
+// ==========================================
+
+// ⚠️ CRITICAL: The sleep function that powers the animation timing
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// ==========================================
+// ROBUST TYPEWRITER ENGINE
+// ==========================================
+async function typeText(element, text, makeReadonlyAfter = true, speed = 35) {
+    if (!element) return;
+    
+    // Force string conversion so empty values don't break the animation
+    const safeText = String(text || ''); 
+
+    // Add glow and scale effect
+    element.classList.add('typing-highlight');
+    element.value = '';
+
+    // Type characters
+    for (let i = 0; i < safeText.length; i++) {
+        element.value += safeText.charAt(i);
+        await sleep(speed);
+    }
+
+    // Remove glow, apply final styled state
+    element.classList.remove('typing-highlight');
+    if (makeReadonlyAfter) {
+        element.readOnly = true;
+        element.classList.add('border-indigo-300', 'bg-indigo-50', 'text-indigo-900', 'font-mono');
+    }
+}
+
+// ==========================================
+// STEP 1: CONFIGURATOR MENU & CONNECTION
+// ==========================================
+function openConfiguratorModal() {
+    document.getElementById('config-menu-modal').classList.remove('hidden');
+}
+
+function closeConfigMenuModal() {
+    document.getElementById('config-menu-modal').classList.add('hidden');
+}
+
+function closeConfiguratorModal() {
+    document.getElementById('configurator-modal').classList.add('hidden');
+}
+
+async function startConnectionAnimation() {
+    if (!currentData) return;
+    const tp = currentData;
+    const td = tp.techDetails || {};
+
+    closeConfigMenuModal();
+    document.getElementById('configurator-modal').classList.remove('hidden');
+
+    const targetName = tp.name || '';
+    let targetBaseUrl = (td.uatUrl || '').trim();
+    let endpoint = (td.endpointUrl || '').trim();
+    if (targetBaseUrl && endpoint && targetBaseUrl.endsWith(endpoint)) {
+        targetBaseUrl = targetBaseUrl.slice(0, -endpoint.length);
+    }
+    if (targetBaseUrl.endsWith('/')) targetBaseUrl = targetBaseUrl.slice(0, -1);
+
+    const headersStr = td.mandatoryHeaders || '';
+    const headersList = headersStr.split(',').map(h => h.trim()).filter(h => h.length > 0);
+
+    const nameField = document.getElementById('config-name');
+    const urlField = document.getElementById('config-base-url');
+    nameField.value = '';
+    urlField.value = '';
+    
+    const headersContainer = document.getElementById('config-headers-container');
+    headersContainer.innerHTML = '';
+    const headerFieldsToType = [];
+
+    if (headersList.length > 0) {
+        headersList.forEach((headerStr, index) => {
+            let key = headerStr;
+            let value = '';
+            if (headerStr.includes(':')) {
+                const parts = headerStr.split(':');
+                key = parts[0].trim();
+                value = parts.slice(1).join(':').trim();
+            } else if (headerStr.includes('=')) {
+                const parts = headerStr.split('=');
+                key = parts[0].trim();
+                value = parts.slice(1).join('=').trim();
+            }
+            
+            const keyId = `config-hdr-key-${index}`;
+            const valId = `config-hdr-val-${index}`;
+            appendEmptyConfigHeaderRow(keyId, valId);
+            
+            headerFieldsToType.push({ el: document.getElementById(keyId), text: key, isReadonly: true });
+            if (value) headerFieldsToType.push({ el: document.getElementById(valId), text: value, isReadonly: false });
+        });
+    } else {
+        appendEmptyConfigHeaderRow('config-hdr-key-0', 'config-hdr-val-0');
+    }
+
+    await sleep(600);
+    await typeText(nameField, targetName);
+    await sleep(400);
+    await typeText(urlField, targetBaseUrl);
+    await sleep(400);
+    
+    for (const field of headerFieldsToType) {
+        await typeText(field.el, field.text, field.isReadonly);
+        await sleep(300);
+    }
+}
+
+function appendEmptyConfigHeaderRow(keyId, valId) {
+    const container = document.getElementById('config-headers-container');
+    const row = document.createElement('div');
+    row.className = 'grid grid-cols-2 gap-4 items-center';
+    row.innerHTML = `
+        <input type="text" id="${keyId}" class="w-full text-sm border border-slate-200 rounded-md px-3 py-2 transition-all" placeholder="Key">
+        <input type="text" id="${valId}" class="w-full text-sm border border-slate-200 rounded-md px-3 py-2 transition-all" placeholder="Value">
+    `;
+    container.appendChild(row);
+}
+
+// ==========================================
+// STEP 2: EDS CONFIGURATION (AI BACKEND CONNECTED)
+// ==========================================
+let currentEdsTab = 1;
+
+async function startEdsAnimation() {
+    if (!currentData) return;
+    const tp = currentData;
+    const td = tp.techDetails || {};
+
+    // Hide Menu, Show EDS Modal
+    closeConfigMenuModal();
+    document.getElementById('eds-config-modal').classList.remove('hidden');
+    edsShowTab(1); 
+
+    document.getElementById('eds-status-text').innerText = "Mapping General Information...";
+
+    // --- PAGE 1 MAPPINGS ---
+    const outTypeStr = (td.apiRes || '').trim().startsWith('<') ? 'XML' : 'JSON';
+    
+    await sleep(400);
+    await typeText(document.getElementById('eds-name'), tp.name);
+    await typeText(document.getElementById('eds-method-name'), td.endpointUrl);
+    await typeText(document.getElementById('eds-desc'), tp.business_flow);
+    await typeText(document.getElementById('eds-method-type'), td.apiMethod || 'POST');
+    await typeText(document.getElementById('eds-output-type'), outTypeStr);
+
+    // --- PREPARE PAGE 2 (Template via AI Backend) ---
+    document.getElementById('eds-status-text').innerText = "AI Agent generating Request Template...";
+    const reqStr = (td.apiReq || '').trim();
+    const inputTypeStr = reqStr.startsWith('<') ? 'XML' : (reqStr.startsWith('{') ? 'JSON' : 'QUERYSTRING');
+    
+    await typeText(document.getElementById('eds-input-type'), inputTypeStr);
+
+    let templateStr = "";
+    if (reqStr) {
+        try {
+            const tResp = await fetch('/api/integrations/eds/generate-template', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ payload: reqStr })
+            });
+            const tData = await tResp.json();
+            templateStr = tData.template;
+        } catch(e) {
+            console.error("Template Gen Error:", e);
+            templateStr = "Error contacting AI Agent.";
+        }
+    } else {
+        templateStr = "{\n  \"message\": \"No request sample provided in touchpoint\"\n}";
+    }
+    document.getElementById('eds-template').value = templateStr;
+
+    // --- PREPARE PAGE 3 (XSLT & Grid via AI Backend) ---
+    document.getElementById('eds-status-text').innerText = "AI Agent writing XSLT Transformation Logic...";
+    const resStr = (td.apiRes || '').trim();
+    const errStr = (td.errorSample || '').trim();
+    
+    let xsltStr = "";
+    let combinedKeys = [];
+    
+    if (resStr || errStr) {
+        try {
+            const xResp = await fetch('/api/integrations/eds/generate-xslt', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ 
+                    success_payload: resStr, 
+                    error_payload: errStr 
+                })
+            });
+            const xData = await xResp.json();
+            xsltStr = xData.xslt || "Error generating XSLT.";
+            combinedKeys = xData.parameters || [];
+        } catch(e) {
+            console.error("XSLT Gen Error:", e);
+            xsltStr = "Error contacting AI Agent.";
+        }
+    } else {
+        xsltStr = "";
+    }
+    
+    document.getElementById('eds-xslt').value = xsltStr;
+    
+    // Build Output Grid
+    const gridContainer = document.getElementById('eds-output-grid');
+    if (combinedKeys && combinedKeys.length > 0) {
+        gridContainer.innerHTML = combinedKeys.map(key => `
+            <div class="grid grid-cols-2 gap-2 p-1 border-b border-slate-100 last:border-0">
+                <span class="font-mono text-[10px] font-bold text-slate-700">${key}</span>
+                <span class="text-[10px] text-slate-500">STRING</span>
+            </div>
+        `).join('');
+    } else {
+        gridContainer.innerHTML = '<p class="text-xs text-slate-400 italic p-2">No output parameters detected.</p>';
+    }
+
+    document.getElementById('eds-status-text').innerText = "Configuration Ready. Review steps.";
+}
+
+// ==========================================
+// EDS TAB NAVIGATION
+// ==========================================
+function edsShowTab(tabNum) {
+    currentEdsTab = tabNum;
+    
+    document.querySelectorAll('.eds-page').forEach(p => p.classList.add('hidden'));
+    document.getElementById(`eds-page-${tabNum}`).classList.remove('hidden');
+    
+    document.querySelectorAll('.eds-tab-btn').forEach((btn, idx) => {
+        if (idx + 1 === tabNum) {
+            btn.classList.replace('text-slate-500', 'text-[#006b8f]');
+            btn.classList.replace('border-transparent', 'border-[#006b8f]');
+        } else {
+            btn.classList.replace('text-[#006b8f]', 'text-slate-500');
+            btn.classList.replace('border-[#006b8f]', 'border-transparent');
+        }
+    });
+
+    document.getElementById('eds-prev-btn').classList.toggle('hidden', tabNum === 1);
+    const nextBtn = document.getElementById('eds-next-btn');
+    if (tabNum === 3) {
+        nextBtn.innerText = "Finish Configuration";
+        nextBtn.onclick = () => document.getElementById('eds-config-modal').classList.add('hidden');
+    } else {
+        nextBtn.innerText = "Next Step";
+        nextBtn.onclick = () => edsSwitchTab(1);
+    }
+}
+
+function edsSwitchTab(direction) {
+    let newTab = currentEdsTab + direction;
+    if (newTab >= 1 && newTab <= 3) {
+        edsShowTab(newTab);
+    }
+}
+// ================================================
+// API's Connection — Save button handler
+// Inserts MASHUPCONNECTION then MASHUPWSCONNECTION
+// in one sequential operation. Idempotent.
+// ================================================
+async function saveApiConnection() {
+    const tp = currentData;
+    if (!tp) {
+        alert("Touchpoint data not loaded.");
+        return;
+    }
+
+    const saveBtn = document.getElementById('config-save-btn');
+    const statusDiv = document.getElementById('config-save-status');
+
+    // Disable immediately to prevent duplicate concurrent requests
+    saveBtn.disabled = true;
+    saveBtn.textContent = "Saving...";
+    statusDiv.className = "text-xs font-medium px-4 py-2 " +
+        "rounded-md w-full text-center max-w-md " +
+        "bg-blue-50 text-blue-700";
+    statusDiv.textContent = "Step 1/2: Creating MASHUPCONNECTION...";
+    statusDiv.classList.remove('hidden');
+
+    try {
+        // Step 1: MASHUPCONNECTION
+        const connResp = await fetch(
+            `/api/crm/mashup/insert/${tp.id}`,
+            { method: "POST",
+              headers: { "Content-Type": "application/json" } }
+        );
+        const connData = await connResp.json();
+
+        if (!connResp.ok || !connData.success) {
+            throw new Error(
+                connData.detail || connData.message ||
+                "MASHUPCONNECTION insert failed."
+            );
+        }
+
+        const connAction = connData.is_update
+            ? "updated" : "created";
+        const connectionId = connData.connection_id;
+
+        // Step 2: MASHUPWSCONNECTION
+        statusDiv.textContent =
+            "Step 2/2: Creating MASHUPWSCONNECTION...";
+
+        const wsResp = await fetch(
+            `/api/crm/mashupws/insert/${tp.id}`,
+            { method: "POST",
+              headers: { "Content-Type": "application/json" } }
+        );
+        const wsData = await wsResp.json();
+
+        if (!wsResp.ok || !wsData.success) {
+            throw new Error(
+                wsData.detail || wsData.message ||
+                "MASHUPWSCONNECTION insert failed."
+            );
+        }
+
+        const wsAction = wsData.is_update
+            ? "updated" : "created";
+
+        // Success state
+        statusDiv.className = "text-xs font-medium px-4 py-2 " +
+            "rounded-md w-full text-center max-w-md " +
+            "bg-emerald-50 text-emerald-700 border " +
+            "border-emerald-200";
+        statusDiv.textContent =
+            `\u2713 Connection ${connAction} (ID: ${connectionId}) ` +
+            `and WS connection ${wsAction} successfully.`;
+        saveBtn.textContent = "Saved \u2713";
+
+        // Auto-close after 2 seconds
+        setTimeout(() => {
+            closeConfiguratorModal();
+            saveBtn.disabled = false;
+            saveBtn.textContent = "Save";
+            statusDiv.classList.add('hidden');
+        }, 2000);
+
+    } catch (err) {
+        // Error state — keep modal open so user can fix and retry
+        statusDiv.className = "text-xs font-medium px-4 py-2 " +
+            "rounded-md w-full text-center max-w-md " +
+            "bg-red-50 text-red-700 border border-red-200";
+        statusDiv.textContent = "\u2717 " + err.message;
+        saveBtn.disabled = false;
+        saveBtn.textContent = "Save";
     }
 }

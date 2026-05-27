@@ -2,42 +2,45 @@ import os
 import json
 import re
 import boto3
+from openai import OpenAI
 from dotenv import load_dotenv
 from botocore.exceptions import ClientError
 
 # Load the variables from the .env file
 load_dotenv()
 
-# Securely grab AWS configuration
-AWS_REGION = os.getenv("AWS_BEDROCK_REGION", "us-east-1")
-MODEL_ID = os.getenv("BEDROCK_MODEL_ID", "anthropic.claude-3-haiku-20240307-v1:0")
+# Securely grab OpenAI configuration
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+MODEL_ID = os.getenv("OPENAI_MODEL_ID", "gpt-4o-mini")
 
-# SAFELY initialize the AWS Bedrock client
+# SAFELY initialize the OpenAI client
 try:
-    # Boto3 automatically reads AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY from your .env
-    bedrock_client = boto3.client(
-        service_name='bedrock-runtime',
-        region_name=AWS_REGION
-    )
+    if OPENAI_API_KEY:
+        client = OpenAI(api_key=OPENAI_API_KEY)
+    else:
+        client = None
+        print("⚠️ WARNING: OPENAI_API_KEY not found in environment. AI Agents are offline.")
 except Exception as e:
-    bedrock_client = None
-    print(f"⚠️ WARNING: AWS Bedrock initialization failed. AI Agents are offline. Error: {e}")
+    client = None
+    print(f"⚠️ WARNING: OpenAI initialization failed. AI Agents are offline. Error: {e}")
 
-def _invoke_bedrock(system_prompt: str, user_prompt: str, temperature: float = 0.3) -> str:
-    """Helper function to securely call AWS Bedrock's Converse API."""
-    if not bedrock_client:
-        raise Exception("Bedrock client is offline.")
+def _invoke_openai(system_prompt: str, user_prompt: str, temperature: float = 0.3) -> str:
+    """Helper function to securely call OpenAI's Chat API."""
+    if not client:
+        raise Exception("OpenAI client is offline. Check API Key.")
         
     try:
-        response = bedrock_client.converse(
-            modelId=MODEL_ID,
-            messages=[{"role": "user", "content": [{"text": user_prompt}]}],
-            system=[{"text": system_prompt}],
-            inferenceConfig={"temperature": temperature}
+        response = client.chat.completions.create(
+            model=MODEL_ID,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            temperature=temperature
         )
-        return response['output']['message']['content'][0]['text'].strip()
-    except ClientError as e:
-        print(f"AWS Bedrock API Error: {e}")
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        print(f"OpenAI API Error: {e}")
         raise e
 
 # -------------------------------------------------------------------------
@@ -49,7 +52,7 @@ def generate_blocker_summary(touchpoint_name: str, team_name: str, history_logs:
     if not history_logs:
         return "No historical context available. Please review initial requirements."
 
-    if not bedrock_client:
+    if not client:
         return "Please review the detailed logs below for the latest status. (AI Agent offline)"
 
     timeline_text = ""
@@ -72,15 +75,15 @@ def generate_blocker_summary(touchpoint_name: str, team_name: str, history_logs:
     user_prompt = f"Timeline Logs:\n{timeline_text}"
 
     try:
-        return _invoke_bedrock(system_prompt, user_prompt, temperature=0.3)
+        return _invoke_openai(system_prompt, user_prompt, temperature=0.3)
     except Exception as e:
-        print(f"AI Agent Summarization Failed via Bedrock: {e}")
+        print(f"AI Agent Summarization Failed via OpenAI: {e}")
         return "Please review the detailed logs below for the latest status."
 
 
 def generate_stakeholder_intro(team_name: str, team_items: list) -> str:
     """Generates a stakeholder-ready introductory paragraph for the email."""
-    if not bedrock_client:
+    if not client:
         return f"<p>Please review the {len(team_items)} pending items below requiring your sign-off to unblock the current project phase.</p>"
 
     context_text = f"Team: {team_name}\nTotal Pending Items: {len(team_items)}\n\nDetails:\n"
@@ -103,15 +106,15 @@ def generate_stakeholder_intro(team_name: str, team_items: list) -> str:
     user_prompt = f"Data Provided:\n{context_text}"
 
     try:
-        return _invoke_bedrock(system_prompt, user_prompt, temperature=0.4)
+        return _invoke_openai(system_prompt, user_prompt, temperature=0.4)
     except Exception as e:
-        print(f"Executive Summary Generation Failed via Bedrock: {e}")
+        print(f"Executive Summary Generation Failed via OpenAI: {e}")
         return f"<p>Please review the {len(team_items)} pending items below requiring your sign-off to unblock the current project phase.</p>"
 
 
 def generate_project_mom(project_data: str) -> str:
     """Synthesizes raw database logs into a formal Minutes of Meeting (MOM)."""
-    if not bedrock_client:
+    if not client:
         return "<p>AI Agent offline. Cannot generate MOM.</p>"
 
     system_prompt = """
@@ -132,17 +135,17 @@ def generate_project_mom(project_data: str) -> str:
     user_prompt = f"Raw Project Data:\n{project_data}"
 
     try:
-        return _invoke_bedrock(system_prompt, user_prompt, temperature=0.3)
+        return _invoke_openai(system_prompt, user_prompt, temperature=0.3)
     except Exception as e:
-        print(f"MOM Generation Failed via Bedrock: {e}")
+        print(f"MOM Generation Failed via OpenAI: {e}")
         return "<p>Error generating MOM. Please review the dashboard manually.</p>"
 
 
 def generate_wud_content(api_name: str, module_name: str, crm_location: str, business_flow: str, input_req: str, output_res: str, integration_type: str = "api") -> dict:
     """Generates formal Introduction, Macro Logic, and Expected Output for the WUD."""
     
-    # Fallback if Bedrock is offline
-    if not bedrock_client:
+    # Fallback if OpenAI is offline
+    if not client:
         return {
             "introduction": f"The '{api_name}' API under the {module_name} module is triggered from {crm_location} to facilitate data transfer.",
             "macro_logic": "• AI Agent offline.\n• Please review manually.",
@@ -179,14 +182,14 @@ def generate_wud_content(api_name: str, module_name: str, crm_location: str, bus
     user_prompt = f"API Name: {api_name}\nModule: {module_name}\nTrigger Location in CRM: {crm_location}\nBusiness Flow / Objective: {business_flow}\n\nInput Details:\n{input_req}\n\nOutput Details:\n{output_res}"
 
     try:
-        response_text = _invoke_bedrock(system_prompt, user_prompt, temperature=0.2)
+        response_text = _invoke_openai(system_prompt, user_prompt, temperature=0.2)
 
         # Strip accidental markdown formatting the LLM might have added
         clean_json = re.sub(r'```json|```', '', response_text).strip()
         return json.loads(clean_json)
 
     except Exception as e:
-        print(f"WUD Content Generation Failed via Bedrock: {e}")
+        print(f"WUD Content Generation Failed via OpenAI: {e}")
         return {
             "introduction": f"The '{api_name}' integration facilitates seamless data transfer.",
             "macro_logic": "• Error: Could not generate logic.\n• Please check API.",
@@ -203,7 +206,7 @@ def generate_touchpoint_mom(
 ) -> str:
     """Returns HTML body for a touchpoint-level MoM email."""
 
-    # Build fallback HTML (used when Bedrock is offline or fails)
+    # Build fallback HTML (used when OpenAI is offline or fails)
     fallback_rows = ""
     for item in action_items:
         fallback_rows += (
@@ -237,7 +240,7 @@ def generate_touchpoint_mom(
     if open_pointers:
         fallback_html += f"<h3>Open Pointers</h3><p>{open_pointers}</p>"
 
-    if not bedrock_client:
+    if not client:
         return fallback_html
 
     # Build AI prompt
@@ -275,7 +278,143 @@ def generate_touchpoint_mom(
     )
 
     try:
-        return _invoke_bedrock(system_prompt, user_prompt, temperature=0.3)
+        return _invoke_openai(system_prompt, user_prompt, temperature=0.3)
     except Exception as e:
-        print(f"Touchpoint MoM Generation Failed via Bedrock: {e}")
+        print(f"Touchpoint MoM Generation Failed via OpenAI: {e}")
         return fallback_html
+
+def generate_eds_request_template(payload: str) -> str:
+    """Generates a dynamic request template by replacing literal values with ##KEY##."""
+    if not client:
+        return "{\n  \"ERROR\": \"AI Agent offline\"\n}"
+
+    system_prompt = """
+    You are an expert enterprise integration developer. Your task is to convert the provided JSON or XML payload into a dynamic request template.
+    Rule 1: Keep the exact structural integrity of the original payload.
+    Rule 2: Replace all literal values with dynamic placeholders in the format ##KEY_NAME_UPPERCASE##.
+    Rule 3: Return ONLY the raw template string. Do not include markdown code blocks (like ```json).
+    """
+    
+    try:
+        return _invoke_openai(system_prompt, f"Payload:\n{payload}", temperature=0.1).strip()
+    except Exception as e:
+        print(f"EDS Template Gen Failed: {e}")
+        return f"Error generating template: {e}"
+
+def generate_eds_xslt_config(success_payload: str, error_payload: str) -> dict:
+    """Generates robust XSLT handling both success/error and extracts output parameters."""
+    if not client:
+        return {"xslt": "", "parameters": ["Error"]}
+
+    system_prompt = """
+    You are an expert XSLT developer. Generate an XSLT 1.0 script to transform the provided JSON/XML inputs into a unified <Response> XML structure.
+    Rule 1: The XSLT must handle both the Success payload and the Failure payload gracefully (using <xsl:choose>).
+    Rule 2: Output balanced XML tags in both scenarios (if it's a failure, success tags should still render but be empty, and vice versa).
+    Rule 3: Extract the final output XML node names into a list of strings.
+    Rule 4: Output strictly as a JSON object with exactly two keys: "xslt" (a string containing the raw XSLT code) and "parameters" (a list of strings representing the output tag names).
+    Do not include markdown code blocks (like ```json). Return ONLY the raw JSON object.
+    """
+    
+    user_prompt = f"Success Payload:\n{success_payload}\n\nFailure Payload:\n{error_payload}"
+    
+    try:
+        response_text = _invoke_openai(system_prompt, user_prompt, temperature=0.1)
+        clean_json = re.sub(r'```json|```', '', response_text).strip()
+        return json.loads(clean_json)
+    except Exception as e:
+        print(f"EDS XSLT Gen Failed: {e}")
+        return {
+            "xslt": f"", 
+            "parameters": []
+        }
+
+
+
+def generate_crm_headers_xml(
+    mandatory_headers_str: str,
+    service_location: str,
+    api_name: str
+) -> dict:
+    """Generate CRM XML headers from the mandatory headers string.
+
+    DETERMINISTIC - no AI. Parses the comma-separated header string
+    directly into <Header Name="..." Value="..." /> elements.
+
+    Supported input formats:
+        "Content-Type: application/json, Authorization:Bearer xyz"
+        "Content-Type, Authorization, X-Request-ID"
+
+    If a header has a colon, everything after the first colon is the value.
+    If a header has no colon, the header name is used as the value placeholder.
+
+    Args:
+        mandatory_headers_str: comma-separated headers (with optional values)
+        service_location: the UAT URL (unused, kept for API compat)
+        api_name: the API name (unused, kept for API compat)
+
+    Returns:
+        {
+            "header_variables_xml": str,
+            "header_variables_xml_escaped": str,
+            "error": str or None
+        }
+    """
+    FALLBACK_XML = '<Headers>\n<Header Name="Content-Type" Value="application/json" />\n</Headers>'
+
+    def _escape_xml(raw: str) -> str:
+        return (raw
+                .replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace('"', "&quot;"))
+
+    if not mandatory_headers_str or not mandatory_headers_str.strip():
+        return {
+            "header_variables_xml": FALLBACK_XML,
+            "header_variables_xml_escaped": _escape_xml(FALLBACK_XML),
+            "error": "No mandatory headers provided - using default."
+        }
+
+    # Parse comma-separated headers
+    raw_parts = [h.strip() for h in mandatory_headers_str.split(",") if h.strip()]
+
+    header_lines = []
+    for part in raw_parts:
+        if ":" in part:
+            # Split on first colon: "Content-Type: application/json" -> ("Content-Type", "application/json")
+            name, value = part.split(":", 1)
+            name = name.strip()
+            value = value.strip()
+        else:
+            # No colon - header name only, use name as placeholder value
+            name = part.strip()
+            value = name
+
+        if name:
+            # Escape XML special chars in values
+            safe_value = (value
+                          .replace('&', '&amp;')
+                          .replace('<', '&lt;')
+                          .replace('>', '&gt;')
+                          .replace('"', '&quot;'))
+            safe_name = (name
+                         .replace('&', '&amp;')
+                         .replace('<', '&lt;')
+                         .replace('>', '&gt;')
+                         .replace('"', '&quot;'))
+            header_lines.append(f'<Header Name="{safe_name}" Value="{safe_value}" />')
+
+    if not header_lines:
+        return {
+            "header_variables_xml": FALLBACK_XML,
+            "header_variables_xml_escaped": _escape_xml(FALLBACK_XML),
+            "error": "Could not parse any headers - using default."
+        }
+
+    xml = "<Headers>\n" + "\n".join(header_lines) + "\n</Headers>"
+
+    return {
+        "header_variables_xml": xml,
+        "header_variables_xml_escaped": _escape_xml(xml),
+        "error": None
+    }

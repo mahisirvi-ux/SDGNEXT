@@ -24,6 +24,7 @@ from app.wud_engine import create_wud_word
 from app.rgt_engine import generate_rgt
 from app.core.email_dispatcher import send_rgt_invite
 from sqlalchemy.orm import Session
+from app.api.routes import crm as crm_router
 
 
 # Force Windows/Python to recognize .js files correctly
@@ -91,6 +92,7 @@ app.include_router(integrations.router)
 app.include_router(mom.router)
 app.include_router(followups.router)
 app.include_router(mocks.router)
+app.include_router(crm_router.router)
 
 # --- NEW: MANUAL TEST ROUTE ---
 @app.get("/test-daily-email")
@@ -323,7 +325,8 @@ async def update_tech_idr(touchpoint_id: int, request: Request):
                 "Completed": "completed",
             }
             
-                        # Ordered steps for backfilling
+                                    
+            # Ordered steps for backfilling
             ordered_keys = ["scheduled", "rgtShared", "inProgress", "discussionCompleted", "documentReview", "completed"]
             
             key = status_to_key.get(new_resolved_status)
@@ -348,6 +351,8 @@ async def update_tech_idr(touchpoint_id: int, request: Request):
             tech.end_date = clean_end
             tech.tech_status = new_status
 
+            from sqlalchemy.orm.attributes import flag_modified
+
             # Stamp status date when status changes
             if new_status != "Auto" and new_status != old_status:
                 current_td = dict(tech.technical_details or {})
@@ -356,11 +361,10 @@ async def update_tech_idr(touchpoint_id: int, request: Request):
                 if clean_start and not current_td.get("statusDates", {}).get("scheduled"):
                     current_td.setdefault("statusDates", {})["scheduled"] = clean_start.strftime("%Y-%m-%d")
                 tech.technical_details = current_td
-                from sqlalchemy.orm.attributes import flag_modified
                 flag_modified(tech, "technical_details")
 
             if "technical_details" in data:
-                td = data.get("technical_details")
+                td = data.get("technical_details") or {}
 
                 # Log discussion entry if provided
                 new_discussion = td.pop("discussion", "").strip() if td else ""
@@ -372,7 +376,7 @@ async def update_tech_idr(touchpoint_id: int, request: Request):
                         comment=new_discussion
                     ))
 
-                                # Log pointer/action entry if provided
+                # Log pointer/action entry if provided
                 new_pointer = td.pop("pointers", "").strip() if td else ""
                 if new_pointer:
                     db.add(IDRActionLog(
@@ -382,11 +386,17 @@ async def update_tech_idr(touchpoint_id: int, request: Request):
                         open_pointer_history=new_pointer
                     ))
 
-                # Merge statusDates into incoming td to preserve them
-                if tech.technical_details and tech.technical_details.get("statusDates"):
-                    td.setdefault("statusDates", {}).update(tech.technical_details["statusDates"])
+                # MERGE incoming fields INTO existing technical_details
+                # so that keys set by other processes (crmConnectionId,
+                # rgtSharedAt, statusDates, etc.) are never lost.
+                existing_td = dict(tech.technical_details or {})
+                existing_td.update(td)
 
-                tech.technical_details = td
+                # Preserve statusDates (deep merge - incoming doesn't overwrite existing dates)
+                if tech.technical_details and tech.technical_details.get("statusDates"):
+                    existing_td.setdefault("statusDates", {}).update(tech.technical_details["statusDates"])
+
+                tech.technical_details = existing_td
                 flag_modified(tech, "technical_details")
         else:
             td = data.get("technical_details", {})

@@ -45,7 +45,7 @@
                     </a>
                 </div>
             </div>
-            <div class="flex items-center gap-2.5">
+                <div class="flex items-center gap-2.5">
                                 <button id="fd-btn-generate" onclick="generateWUD()" class="hidden flex items-center gap-1.5 bg-white/10 border border-white/20 text-white hover:bg-white/20 text-[11px] font-bold py-2 px-4 rounded-lg transition-all">
                                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
                                     Generate WUD
@@ -54,6 +54,11 @@
                                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 100-4h14a2 2 0 100 4M5 12a2 2 0 110 4h14a2 2 0 110-4"></path></svg>
                                     Generate Mock
                                 </button>
+                                <button id="fd-btn-configurator" onclick="openConfiguratorModal()" class="hidden flex items-center gap-1.5 bg-indigo-500 border border-indigo-600 text-white hover:bg-indigo-600 text-[11px] font-bold py-2 px-4 rounded-lg transition-all shadow-sm ml-2">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"></path></svg>
+                                    Configurator Guide
+                                </button>
+                                                                  
                 <button id="fd-btn-edit" onclick="toggleDetailsEditMode()" class="flex items-center gap-1.5 bg-primary hover:bg-primary-hover text-white text-[11px] font-bold py-2 px-5 rounded-lg shadow transition-all">
                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
                     Edit Details
@@ -485,9 +490,219 @@
             </div>
         </div>
     </div>
+    <div id="config-menu-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+    <div class="bg-white rounded-xl shadow-2xl w-[400px] p-6 text-center transform transition-all">
+        <h3 class="text-lg font-bold text-[#1a233a] mb-6">Select Configuration Step</h3>
+        
+        <div class="flex flex-col gap-4">
+            <button onclick="startConnectionAnimation()" class="bg-[#006b8f] hover:bg-[#005573] text-white font-bold py-3 px-4 rounded-lg transition-all shadow-sm flex items-center justify-center gap-2">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path></svg>
+                Step 1: New Connection
+            </button>
+           <button onclick="startEdsAnimation()" class="bg-[#006b8f] hover:bg-[#005573] text-white font-bold py-3 px-4 rounded-lg transition-all shadow-sm flex items-center justify-center gap-2 mt-4">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"></path></svg>
+            Step 2: EDS Configuration
+        </button>
+        </div>
+        
+        <button onclick="closeConfigMenuModal()" class="mt-6 text-[11px] font-bold text-slate-400 hover:text-slate-600">Cancel</button>
+    </div>
+</div>
+    <div id="configurator-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+    <div class="bg-white rounded-xl shadow-2xl w-[800px] max-h-[90vh] flex flex-col overflow-hidden">
+        
+        <div class="flex items-center justify-between p-4 border-b border-slate-200 bg-slate-50">
+            <div>
+                <h2 class="text-lg font-black text-[#1a233a]">API's Connection</h2>
+                <p class="text-[11px] text-slate-500 mt-0.5">Step 1: Map Touchpoint Details to EDS Variables</p>
+            </div>
+            <button onclick="closeConfiguratorModal()" class="text-slate-400 hover:text-slate-600">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </button>
+        </div>
 
-        <script src="/js/details.js?v=17"></script>
+        <div class="flex-grow overflow-y-auto p-6 space-y-8">
+            
+            <section>
+                <h3 class="text-sm font-bold text-[#1a233a] mb-4 border-b border-slate-200 pb-2">Connection Detail</h3>
+                <div class="space-y-4">
+                    <div class="flex gap-4 items-start">
+                        <label class="w-32 text-[11px] font-bold text-slate-500 text-right mt-2">Name <span class="text-red-500">*</span></label>
+                        <input type="text" id="config-name" class="flex-1 text-sm border border-indigo-300 bg-indigo-50 rounded-md px-3 py-2 font-semibold text-indigo-900" readonly>
+                    </div>
+                    <div class="flex gap-4 items-start">
+                        <label class="w-32 text-[11px] font-bold text-slate-500 text-right mt-2">Description</label>
+                        <div class="flex-1">
+                            <textarea class="w-full text-sm border border-slate-200 rounded-md px-3 py-2" rows="2"></textarea>
+                            <p class="text-[10px] text-slate-400 text-right mt-1">256 characters left</p>
+                        </div>
+                    </div>
+                    <div class="flex gap-4 items-center">
+                        <label class="w-32 text-[11px] font-bold text-slate-500 text-right">Type</label>
+                        <select class="flex-1 text-sm border border-slate-200 rounded-md px-3 py-2">
+                            <option value="RESTFUL API">RESTFUL API</option>
+                        </select>
+                    </div>
+                </div>
+            </section>
+
+            <section>
+                <h3 class="text-sm font-bold text-[#1a233a] mb-4 border-b border-slate-200 pb-2">RESTFUL API Connection Properties</h3>
+                <div class="space-y-4">
+                    <div class="flex gap-4 items-start">
+                        <label class="w-32 text-[11px] font-bold text-slate-500 text-right mt-2">RESTful Base URL <span class="text-red-500">*</span></label>
+                        <input type="text" id="config-base-url" class="flex-1 text-sm border border-indigo-300 bg-indigo-50 rounded-md px-3 py-2 font-mono text-indigo-900" readonly>
+                    </div>
+                    <div class="flex gap-4 items-start">
+                        <label class="w-32 text-[11px] font-bold text-slate-500 text-right mt-2">Token Json</label>
+                        <textarea class="flex-1 text-sm border border-slate-200 rounded-md px-3 py-2" rows="4"></textarea>
+                    </div>
+                </div>
+            </section>
+
+            <section>
+                <h3 class="text-sm font-bold text-[#1a233a] mb-4 border-b border-slate-200 pb-2">Request Header Variables</h3>
+                <div class="pl-[144px]"> <div class="grid grid-cols-2 gap-4 mb-2">
+                        <div class="text-[11px] font-bold text-slate-500 bg-slate-100 p-2 rounded">Variable</div>
+                        <div class="text-[11px] font-bold text-slate-500 bg-slate-100 p-2 rounded">Value</div>
+                    </div>
+                    <div id="config-headers-container" class="space-y-2">
+                        </div>
+                </div>
+            </section>
+
+        </div>
+
+                <div class="p-4 border-t border-slate-200 bg-slate-50 flex flex-col items-center gap-3">
+            <div id="config-save-status" class="hidden text-xs font-medium px-4 py-2 rounded-md w-full text-center max-w-md"></div>
+            <div class="flex justify-center gap-3">
+                <button id="config-save-btn" onclick="saveApiConnection()" class="text-xs font-bold text-white bg-[#006b8f] hover:bg-[#005573] px-6 py-2 rounded-full shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">Save</button>
+                <button onclick="closeConfiguratorModal()" class="text-xs font-bold text-[#006b8f] border border-[#006b8f] hover:bg-slate-100 px-6 py-2 rounded-full">Cancel</button>
+            </div>
+        </div>
+    </div>
+</div>
+<div id="eds-config-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+    <div class="bg-white rounded-xl shadow-2xl w-[900px] h-[85vh] flex flex-col overflow-hidden">
+        
+        <div class="flex flex-col border-b border-slate-200 bg-slate-50">
+            <div class="flex items-center justify-between p-4 pb-2">
+                <div>
+                    <h2 class="text-lg font-black text-[#1a233a]">EDS Creation Configuration</h2>
+                    <p class="text-[11px] text-slate-500 mt-0.5">Automated External Data Source Mapping</p>
+                </div>
+                <button onclick="document.getElementById('eds-config-modal').classList.add('hidden')" class="text-slate-400 hover:text-slate-600">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            </div>
+            <div class="flex gap-1 px-4 mt-2">
+                <button id="eds-tab-1" class="eds-tab-btn active border-b-2 border-[#006b8f] text-[#006b8f] font-bold text-xs px-4 py-2">1. General Info</button>
+                <button id="eds-tab-2" class="eds-tab-btn text-slate-500 hover:text-slate-700 font-bold text-xs px-4 py-2 border-b-2 border-transparent">2. Request Template</button>
+                <button id="eds-tab-3" class="eds-tab-btn text-slate-500 hover:text-slate-700 font-bold text-xs px-4 py-2 border-b-2 border-transparent">3. Response & XSLT</button>
+            </div>
+        </div>
+
+        <div class="flex-grow overflow-y-auto p-6 bg-white relative">
+            
+            <div id="eds-page-1" class="eds-page space-y-5">
+                <div class="grid grid-cols-2 gap-6">
+                    <div>
+                        <label class="text-[10px] font-bold text-slate-500 uppercase">Name</label>
+                        <input type="text" id="eds-name" class="w-full text-sm border border-slate-200 rounded px-3 py-2 mt-1 transition-all">
+                    </div>
+                    <div>
+                        <label class="text-[10px] font-bold text-slate-500 uppercase">Method Name</label>
+                        <input type="text" id="eds-method-name" class="w-full text-sm border border-slate-200 rounded px-3 py-2 mt-1 transition-all">
+                    </div>
+                    <div class="col-span-2">
+                        <label class="text-[10px] font-bold text-slate-500 uppercase">Description (Business Flow)</label>
+                        <textarea id="eds-desc" rows="2" class="w-full text-sm border border-slate-200 rounded px-3 py-2 mt-1 transition-all"></textarea>
+                    </div>
+                    <div>
+                        <label class="text-[10px] font-bold text-slate-500 uppercase">Method Type</label>
+                        <input type="text" id="eds-method-type" class="w-full text-sm border border-slate-200 rounded px-3 py-2 mt-1 transition-all">
+                    </div>
+                    <div>
+                        <label class="text-[10px] font-bold text-slate-500 uppercase">Method Output Type</label>
+                        <input type="text" id="eds-output-type" class="w-full text-sm border border-slate-200 rounded px-3 py-2 mt-1 transition-all text-indigo-700 font-bold">
+                    </div>
+                    <div class="col-span-2 flex items-center gap-6 bg-slate-50 p-3 rounded border border-slate-100">
+                        <label class="flex items-center gap-2 text-sm font-bold text-slate-700">
+                            <input type="checkbox" id="eds-logging" checked class="w-4 h-4 text-[#006b8f]"> Enable Logging
+                        </label>
+                        <div class="flex items-center gap-2">
+                            <label class="text-[10px] font-bold text-slate-500 uppercase">Retention Period</label>
+                            <input type="text" id="eds-retention" value="7 Days" class="w-20 text-sm border border-slate-200 rounded px-2 py-1 transition-all">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="eds-page-2" class="eds-page hidden space-y-5">
+                <div>
+                    <label class="text-[10px] font-bold text-slate-500 uppercase">Parameter Input Type</label>
+                    <input type="text" id="eds-input-type" class="w-1/3 text-sm border border-slate-200 rounded px-3 py-2 mt-1 transition-all font-mono">
+                </div>
+                
+                <div class="border border-slate-200 rounded-lg overflow-hidden">
+                    <table class="w-full text-left text-xs">
+                        <thead class="bg-slate-100 text-slate-600 font-bold">
+                            <tr><th class="p-2 border-b">Parameter Name</th><th class="p-2 border-b">Display Name</th><th class="p-2 border-b">Action</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td class="p-2 border-b font-mono font-bold">REQUEST</td>
+                                <td class="p-2 border-b">REQUEST</td>
+                                <td class="p-2 border-b"><span class="text-indigo-500 cursor-pointer hover:underline font-bold">Edit Template</span></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div>
+                    <label class="text-[10px] font-bold text-slate-500 uppercase">Dynamic Request Template</label>
+                    <div class="relative mt-1">
+                        <div class="absolute top-2 right-2 bg-pink-100 text-pink-700 text-[9px] px-2 py-1 rounded font-bold uppercase tracking-wider shadow-sm animate-pulse">AI Generated</div>
+                        <textarea id="eds-template" rows="8" class="w-full text-xs font-mono border border-slate-200 rounded px-3 py-3 bg-slate-900 text-green-400 transition-all"></textarea>
+                    </div>
+                </div>
+            </div>
+
+            <div id="eds-page-3" class="eds-page hidden space-y-5">
+                <div class="grid grid-cols-3 gap-6">
+                    <div class="col-span-2">
+                        <label class="text-[10px] font-bold text-slate-500 uppercase flex justify-between">
+                            <span>Dynamic AI XSLT Generator</span>
+                            <span class="text-indigo-500">Handles Success & Failure</span>
+                        </label>
+                        <textarea id="eds-xslt" rows="14" class="w-full text-xs font-mono border border-slate-200 rounded px-3 py-3 mt-1 bg-slate-900 text-blue-300 transition-all"></textarea>
+                    </div>
+                    
+                    <div>
+                        <label class="text-[10px] font-bold text-slate-500 uppercase">Node XPath</label>
+                        <input type="text" id="eds-xpath" class="w-full text-sm border border-slate-200 rounded px-3 py-2 mt-1 transition-all mb-4" value="Response">
+                        
+                        <label class="text-[10px] font-bold text-slate-500 uppercase">Output Parameters Map</label>
+                        <div id="eds-output-grid" class="mt-1 border border-slate-200 rounded bg-slate-50 h-[220px] overflow-y-auto p-2 space-y-2 text-xs">
+                            </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <div class="p-4 border-t border-slate-200 bg-slate-50 flex justify-between items-center">
+            <div id="eds-status-text" class="text-xs text-indigo-600 font-bold italic">Initializing Configuration...</div>
+            <div class="flex gap-2">
+                <button id="eds-prev-btn" onclick="edsSwitchTab(-1)" class="hidden text-xs font-bold text-slate-600 border border-slate-300 hover:bg-slate-100 px-6 py-2 rounded">Previous</button>
+                <button id="eds-next-btn" onclick="edsSwitchTab(1)" class="text-xs font-bold text-white bg-[#006b8f] hover:bg-[#005573] px-6 py-2 rounded">Next Step</button>
+            </div>
+        </div>
+    </div>
+</div>
+    <script src="/js/details.js?v=19"></script>
     <script src="/js/mom.js?v=1"></script>
     <script src="/js/followups.js?v=1"></script>
+
 </body>
 </html>
