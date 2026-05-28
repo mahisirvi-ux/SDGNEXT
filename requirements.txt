@@ -10,3 +10,6 @@ python-docx>=0.8.11
 boto3>=1.28.0
 openai>=1.59.0
 oracledb>=2.0.0
+# Auth
+python-jose[cryptography]>=3.3.0
+bcrypt>=4.0.0

@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SDGNext | Login</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        * { font-family: 'Inter', sans-serif; }
+
+        /* ── Left panel background ── */
+        body { background: #f8fafc; }
+
+        /* ── Right panel: animated gradient background ── */
+        .hero-panel {
+            background: linear-gradient(135deg, #1a233a 0%, #0f1729 50%, #1a233a 100%);
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* Animated mesh orbs */
+        .orb {
+            position: absolute;
+            border-radius: 50%;
+            filter: blur(80px);
+            opacity: 0.25;
+            animation: float 8s ease-in-out infinite;
+        }
+        .orb-1 { width: 420px; height: 420px; background: #ec4899; top: -100px; right: -80px; animation-delay: 0s; }
+        .orb-2 { width: 320px; height: 320px; background: #6366f1; bottom: 60px; right: 120px; animation-delay: -3s; }
+        .orb-3 { width: 240px; height: 240px; background: #0d9488; top: 40%; left: -40px; animation-delay: -5s; }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0px) scale(1); }
+            50%       { transform: translateY(-28px) scale(1.04); }
+        }
+
+        /* ── Slide-up carousel text ── */
+        .slides-wrap { position: relative; min-height: 160px; overflow: visible; }
+        .slide {
+            position: absolute;
+            width: 100%;
+            opacity: 0;
+            transform: translateY(30px);
+            transition: opacity 0.7s ease, transform 0.7s ease;
+            padding-bottom: 4px;
+        }
+        .slide.active {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        .slide.exit {
+            opacity: 0;
+            transform: translateY(-30px);
+        }
+
+        /* ── Dot indicators ── */
+        .dot { width: 8px; height: 8px; border-radius: 50%; background: rgba(255,255,255,0.35); transition: all 0.3s ease; cursor: pointer; }
+        .dot.active { background: #ec4899; transform: scale(1.3); }
+
+        /* ── Input floating label ── */
+        .input-group { position: relative; }
+        .input-group input { 
+            width: 100%; 
+            padding: 20px 14px 8px 14px; 
+            border: 1.5px solid #e2e8f0; 
+            border-radius: 10px; 
+            font-size: 14px; 
+            background: white; 
+            outline: none; 
+            transition: border-color 0.2s, box-shadow 0.2s;
+            color: #1e293b;
+            height: 54px;
+        }
+        .input-group input:focus { 
+            border-color: #ec4899; 
+            box-shadow: 0 0 0 3px rgba(236,72,153,0.12); 
+        }
+        .input-group input.error { 
+            border-color: #ef4444; 
+            box-shadow: 0 0 0 3px rgba(239,68,68,0.10); 
+        }
+        .input-group label {
+            position: absolute;
+            left: 14px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 14px;
+            color: #94a3b8;
+            pointer-events: none;
+            transition: all 0.18s ease;
+            background: transparent;
+            padding: 0 2px;
+            white-space: nowrap;
+        }
+        .input-group input:focus ~ label,
+        .input-group input.has-value ~ label {
+            top: 9px;
+            transform: translateY(0);
+            font-size: 10px;
+            font-weight: 700;
+            color: #ec4899;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            background: white;
+        }
+        .input-group input.error ~ label { color: #ef4444; }
+
+        /* eye icon sits at vertical center of the taller input */
+        .eye-btn { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); cursor: pointer; color: #94a3b8; transition: color 0.2s; }
+        .eye-btn:hover { color: #1a233a; }
+
+        /* ── Login button pulse ── */
+        .btn-login {
+            background: #b5cc18;
+            color: #1a233a;
+            font-weight: 700;
+            font-size: 15px;
+            padding: 13px;
+            border-radius: 10px;
+            border: none;
+            width: 100%;
+            cursor: pointer;
+            transition: background 0.2s, transform 0.15s, box-shadow 0.2s;
+            position: relative;
+            overflow: hidden;
+        }
+        .btn-login:hover { background: #c8de1e; box-shadow: 0 4px 20px rgba(181,204,24,0.4); transform: translateY(-1px); }
+        .btn-login:active { transform: translateY(0px); }
+        .btn-login.loading { pointer-events: none; }
+
+        /* Ripple */
+        .ripple {
+            position: absolute;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.35);
+            transform: scale(0);
+            animation: ripple-anim 0.5s linear;
+            pointer-events: none;
+        }
+        @keyframes ripple-anim { to { transform: scale(4); opacity: 0; } }
+
+        /* ── Spinner ── */
+        .spinner {
+            display: inline-block;
+            width: 18px; height: 18px;
+            border: 2.5px solid rgba(26,35,58,0.25);
+            border-top-color: #1a233a;
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+            vertical-align: middle;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ── Shake animation ── */
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            20%       { transform: translateX(-7px); }
+            40%       { transform: translateX(7px); }
+            60%       { transform: translateX(-5px); }
+            80%       { transform: translateX(5px); }
+        }
+        .shake { animation: shake 0.4s ease; }
+
+        /* ── Success checkmark ── */
+        .check-circle {
+            width: 56px; height: 56px;
+            border-radius: 50%;
+            background: #ecfdf5;
+            display: flex; align-items: center; justify-content: center;
+            margin: 0 auto 12px;
+        }
+        .checkmark {
+            width: 28px; height: 28px;
+            stroke: #10b981;
+            stroke-width: 2.5;
+            stroke-dasharray: 50;
+            stroke-dashoffset: 50;
+            fill: none;
+            animation: draw-check 0.5s ease forwards 0.1s;
+        }
+        @keyframes draw-check { to { stroke-dashoffset: 0; } }
+
+        /* ── Page fade in ── */
+        @keyframes page-in {
+            from { opacity: 0; transform: translateY(8px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        .page-enter { animation: page-in 0.5s ease forwards; }
+
+        /* ── Card birds (decorative SVG particles) ── */
+        .bird-grid svg { fill: #ec4899; opacity: 0.85; }
+
+        /* ── Feature badge ── */
+        .badge {
+            display: inline-flex; align-items: center; gap: 6px;
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 9999px;
+            padding: 5px 12px;
+            font-size: 11px;
+            font-weight: 600;
+            color: rgba(255,255,255,0.85);
+            backdrop-filter: blur(4px);
+        }
+        .badge-dot { width: 6px; height: 6px; border-radius: 50%; background: #4ade80; animation: pulse-dot 2s infinite; }
+        @keyframes pulse-dot {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50%       { opacity: 0.5; transform: scale(1.4); }
+        }
+
+        /* scrollbar hidden */
+        ::-webkit-scrollbar { display: none; }
+
+        /* ── Setup / Register panel ── */
+        .tab-btn { transition: all 0.2s ease; }
+        .tab-btn.active {
+            background: #1a233a;
+            color: white;
+            box-shadow: 0 2px 8px rgba(26,35,58,0.25);
+        }
+    </style>
+</head>
+<body class="min-h-screen flex items-stretch">
+
+    <!-- ════════════════════════════════════════
+         LEFT PANEL — Login Form
+    ════════════════════════════════════════ -->
+    <div class="flex flex-col justify-between w-full max-w-[460px] min-h-screen bg-white px-10 py-8 relative z-10 shadow-2xl page-enter">
+
+        <!-- Logo -->
+        <div>
+            <a href="/" class="inline-block">
+                <span class="text-xl font-black tracking-tight text-[#1a233a]">SDG<span style="color:#ec4899">NEXT</span></span>
+            </a>
+        </div>
+
+        <!-- Tab switcher (shown only when no users exist) -->
+        <div id="tab-switcher" class="hidden w-full max-w-[340px] mx-auto mb-6">
+            <div class="flex bg-slate-100 rounded-xl p-1 gap-1">
+                <button id="tab-login-btn" class="tab-btn active flex-1 text-sm font-semibold py-2 rounded-lg" onclick="switchTab('login')">Login</button>
+                <button id="tab-setup-btn" class="tab-btn flex-1 text-sm font-semibold py-2 rounded-lg text-slate-500" onclick="switchTab('setup')">First-Time Setup</button>
+            </div>
+        </div>
+
+        <!-- Form Area -->
+        <div id="login-form-wrapper" class="w-full max-w-[340px] mx-auto">
+
+            <!-- Heading -->
+            <div class="mb-8">
+                <h1 class="text-3xl font-black text-[#1a233a] mb-2">Login</h1>
+                <p class="text-sm text-slate-500">Enter your credentials to access your account</p>
+            </div>
+
+            <!-- Error Banner -->
+            <div id="error-banner" class="hidden mb-4 px-4 py-3 bg-red-50 border border-red-200 rounded-xl flex items-center gap-2 text-sm text-red-600">
+                <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                <span id="error-text">Invalid username or password.</span>
+            </div>
+
+            <!-- Username -->
+            <div class="input-group mb-4" id="username-group">
+                <input type="text" id="username" autocomplete="username" class="" oninput="syncLabel(this)">
+                <label for="username">Username <span class="text-red-400">*</span></label>
+                <p class="text-xs text-red-500 mt-1 hidden" id="username-err">Username is required.</p>
+            </div>
+
+            <!-- Password -->
+            <div class="input-group mb-2" id="password-group">
+                <input type="password" id="password" autocomplete="current-password" class="" oninput="syncLabel(this)">
+                <label for="password">Password</label>
+                <button type="button" class="eye-btn" onclick="togglePassword()" tabindex="-1" id="eye-btn">
+                    <svg id="eye-open" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                    </svg>
+                    <svg id="eye-closed" class="w-5 h-5 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"/>
+                    </svg>
+                </button>
+                <p class="text-xs text-red-500 mt-1 hidden" id="password-err">Password is required.</p>
+            </div>
+
+            <!-- Remember + Forgot -->
+            <div class="flex items-center justify-between mb-6">
+                <label class="flex items-center gap-2 cursor-pointer select-none group">
+                    <div class="relative">
+                        <input type="checkbox" id="remember" class="sr-only peer">
+                        <div class="w-4 h-4 border-2 border-slate-300 rounded peer-checked:bg-pink-500 peer-checked:border-pink-500 transition-all flex items-center justify-center">
+                            <svg id="check-icon" class="w-2.5 h-2.5 text-white hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>
+                        </div>
+                    </div>
+                    <span class="text-sm text-slate-600">Remember me</span>
+                </label>
+                <a href="#" class="text-sm font-semibold" style="color:#ec4899" onmouseover="this.style.color='#be185d'" onmouseout="this.style.color='#ec4899'">Forgot Password?</a>
+            </div>
+
+            <!-- Login Button -->
+            <button class="btn-login" id="login-btn" onclick="handleLogin(event)">
+                <span id="btn-label">Login</span>
+            </button>
+
+            <!-- Trouble link -->
+            <p class="text-center mt-5">
+                <a href="#" class="text-sm font-semibold underline underline-offset-2" style="color:#ec4899" onmouseover="this.style.color='#be185d'" onmouseout="this.style.color='#ec4899'">Having Trouble Logging In?</a>
+            </p>
+        </div>
+
+        <!-- ── First-Time Setup Panel ── -->
+        <div id="setup-form-wrapper" class="hidden w-full max-w-[340px] mx-auto">
+            <div class="mb-6">
+                <h1 class="text-2xl font-black text-[#1a233a] mb-1">Create Admin Account</h1>
+                <p class="text-sm text-slate-500">Set up your first administrator account to get started.</p>
+            </div>
+
+            <!-- Setup Error Banner -->
+            <div id="setup-error-banner" class="hidden mb-4 px-4 py-3 bg-red-50 border border-red-200 rounded-xl flex items-center gap-2 text-sm text-red-600">
+                <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                <span id="setup-error-text">Something went wrong.</span>
+            </div>
+
+            <div class="input-group mb-3">
+                <input type="text" id="setup-name" oninput="syncLabel(this)">
+                <label for="setup-name">Full Name <span class="text-red-400">*</span></label>
+            </div>
+            <div class="input-group mb-3">
+                <input type="text" id="setup-username" oninput="syncLabel(this)" autocomplete="off">
+                <label for="setup-username">Username <span class="text-red-400">*</span></label>
+            </div>
+            <div class="input-group mb-3">
+                <input type="email" id="setup-email" oninput="syncLabel(this)" autocomplete="off">
+                <label for="setup-email">Email <span class="text-red-400">*</span></label>
+            </div>
+            <div class="input-group mb-5">
+                <input type="password" id="setup-password" oninput="syncLabel(this)" autocomplete="new-password">
+                <label for="setup-password">Password <span class="text-red-400">*</span></label>
+            </div>
+
+            <button class="btn-login" id="setup-btn" onclick="handleSetup(event)">
+                <span id="setup-btn-label">Create Account &amp; Login</span>
+            </button>
+        </div>
+
+        <!-- Success State (hidden by default) -->
+        <div id="success-state" class="hidden w-full max-w-[340px] mx-auto text-center">
+            <div class="check-circle">
+                <svg class="checkmark" viewBox="0 0 24 24">
+                    <polyline points="20 6 9 17 4 12"/>
+                </svg>
+            </div>
+            <h2 class="text-xl font-bold text-[#1a233a] mb-2">You're in!</h2>
+            <p class="text-sm text-slate-500">Redirecting to your Command Center…</p>
+            <div class="mt-4 flex justify-center"><span class="spinner" style="border-top-color:#ec4899;border-color:rgba(236,72,153,0.2)"></span></div>
+        </div>
+
+        <!-- Footer -->
+        <p class="text-xs text-slate-400 text-center">© Copyright 2026, All rights reserved.</p>
+    </div>
+
+    <!-- ════════════════════════════════════════
+         RIGHT PANEL — Hero / Carousel
+    ════════════════════════════════════════ -->
+    <div class="hidden md:flex flex-1 hero-panel flex-col justify-between p-12 relative select-none">
+
+        <!-- Animated Orbs -->
+        <div class="orb orb-1"></div>
+        <div class="orb orb-2"></div>
+        <div class="orb orb-3"></div>
+
+        <!-- Top-right decorative bird grid -->
+        <div class="absolute top-8 right-8 bird-grid" id="bird-grid" aria-hidden="true"></div>
+
+        <!-- Live badge -->
+        <div class="relative z-10">
+            <div class="badge">
+                <span class="badge-dot"></span>
+                Live Command Center
+            </div>
+        </div>
+
+        <!-- Slide carousel -->
+        <div class="relative z-10">
+            <div class="slides-wrap mb-6" id="slides-wrap">
+                <div class="slide active" data-index="0">
+                    <h2 class="text-4xl font-black text-white leading-tight mb-3">Guided Selling</h2>
+                    <p class="text-base font-semibold text-white/80 mb-1">Boost sales effectiveness with call scripts.</p>
+                    <p class="text-sm text-white/55 max-w-sm">Reduce sales cycle time and improve customer experience with more intelligence at all customer touch-points.</p>
+                </div>
+                <div class="slide" data-index="1">
+                    <h2 class="text-4xl font-black text-white leading-tight mb-3">Smart Automation</h2>
+                    <p class="text-base font-semibold text-white/80 mb-1">Automate repetitive workflows end-to-end.</p>
+                    <p class="text-sm text-white/55 max-w-sm">Free your team from manual tasks and let intelligent automation handle scheduling, follow-ups and reporting.</p>
+                </div>
+                <div class="slide" data-index="2">
+                    <h2 class="text-4xl font-black text-white leading-tight mb-3">Deep Analytics</h2>
+                    <p class="text-base font-semibold text-white/80 mb-1">Real-time dashboards built for decision makers.</p>
+                    <p class="text-sm text-white/55 max-w-sm">Track every KPI, milestone and touchpoint in one place — so the right insights reach the right people instantly.</p>
+                </div>
+            </div>
+
+            <!-- Dots -->
+            <div class="flex items-center gap-2" id="dots-row">
+                <button class="dot active" onclick="goToSlide(0)"></button>
+                <button class="dot" onclick="goToSlide(1)"></button>
+                <button class="dot" onclick="goToSlide(2)"></button>
+            </div>
+        </div>
+
+        <!-- Bottom credit tag -->
+        <div class="relative z-10 flex items-center gap-2">
+            <div class="w-7 h-7 rounded-full bg-pink-500 text-white text-[10px] font-bold flex items-center justify-center shadow-lg shadow-pink-500/30">SN</div>
+            <span class="text-xs text-white/50 font-medium">SDGNext Platform</span>
+        </div>
+    </div>
+
+    <!-- ════════════════════════════════════════
+         SCRIPTS
+    ════════════════════════════════════════ -->
+    <script>
+    /* ── Already logged in? Skip to home ── */
+    (function checkAlreadyLoggedIn() {
+        const token = localStorage.getItem('sdgnext_token');
+        if (!token) return;
+        // Decode and check expiry
+        try {
+            const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')));
+            if (!payload.exp || Date.now() / 1000 < payload.exp) {
+                window.location.replace('/');
+            }
+        } catch { /* invalid token — ignore */ }
+    })();
+
+    /* ── First-run detection ── */
+    (async function checkFirstRun() {
+        try {
+            const r = await fetch('/api/auth/first-run');
+            const d = await r.json();
+            if (d.first_run) {
+                document.getElementById('tab-switcher').classList.remove('hidden');
+            }
+        } catch { /* server not ready yet */ }
+    })();
+
+    function switchTab(tab) {
+        const loginWrapper = document.getElementById('login-form-wrapper');
+        const setupWrapper = document.getElementById('setup-form-wrapper');
+        const loginBtn  = document.getElementById('tab-login-btn');
+        const setupBtn  = document.getElementById('tab-setup-btn');
+        if (tab === 'login') {
+            loginWrapper.classList.remove('hidden');
+            setupWrapper.classList.add('hidden');
+            loginBtn.classList.add('active');   loginBtn.classList.remove('text-slate-500');
+            setupBtn.classList.remove('active'); setupBtn.classList.add('text-slate-500');
+        } else {
+            loginWrapper.classList.add('hidden');
+            setupWrapper.classList.remove('hidden');
+            setupBtn.classList.add('active');    setupBtn.classList.remove('text-slate-500');
+            loginBtn.classList.remove('active'); loginBtn.classList.add('text-slate-500');
+        }
+    }
+
+    async function handleSetup(e) {
+        const name     = document.getElementById('setup-name').value.trim();
+        const username = document.getElementById('setup-username').value.trim();
+        const email    = document.getElementById('setup-email').value.trim();
+        const password = document.getElementById('setup-password').value.trim();
+
+        if (!name || !username || !email || !password) {
+            showSetupError('All fields are required.');
+            return;
+        }
+        if (password.length < 6) {
+            showSetupError('Password must be at least 6 characters.');
+            return;
+        }
+
+        const btn   = document.getElementById('setup-btn');
+        const label = document.getElementById('setup-btn-label');
+        btn.classList.add('loading');
+        label.innerHTML = '<span class="spinner mr-2"></span>Creating account…';
+
+        try {
+            const res  = await fetch('/api/auth/register', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ full_name: name, username, email, password, role: 'admin' })
+            });
+            const data = await res.json();
+
+            if (!res.ok) {
+                btn.classList.remove('loading');
+                label.textContent = 'Create Account & Login';
+                showSetupError(data.detail || 'Failed to create account.');
+                return;
+            }
+
+            localStorage.setItem('sdgnext_token', data.token);
+            localStorage.setItem('sdgnext_user',  JSON.stringify(data.user));
+
+            document.getElementById('setup-form-wrapper').style.opacity = '0';
+            document.getElementById('setup-form-wrapper').style.transition = 'opacity 0.3s';
+            setTimeout(() => {
+                document.getElementById('setup-form-wrapper').classList.add('hidden');
+                document.getElementById('tab-switcher').classList.add('hidden');
+                document.getElementById('success-state').classList.remove('hidden');
+            }, 300);
+            setTimeout(() => { window.location.href = '/'; }, 1800);
+        } catch {
+            btn.classList.remove('loading');
+            label.textContent = 'Create Account & Login';
+            showSetupError('Network error. Please try again.');
+        }
+    }
+
+    function showSetupError(msg) {
+        const b = document.getElementById('setup-error-banner');
+        b.classList.remove('hidden'); b.classList.add('flex');
+        document.getElementById('setup-error-text').textContent = msg;
+    }
+
+    /* ── Floating label sync ── */
+    function syncLabel(input) {
+        if (input.value.length > 0) input.classList.add('has-value');
+        else input.classList.remove('has-value');
+    }
+
+    /* ── Password toggle ── */
+    function togglePassword() {
+        const input = document.getElementById('password');
+        const open  = document.getElementById('eye-open');
+        const closed = document.getElementById('eye-closed');
+        if (input.type === 'password') {
+            input.type = 'text';
+            open.classList.add('hidden');
+            closed.classList.remove('hidden');
+        } else {
+            input.type = 'password';
+            open.classList.remove('hidden');
+            closed.classList.add('hidden');
+        }
+    }
+
+    /* ── Custom checkbox ── */
+    const rememberCheck = document.getElementById('remember');
+    const checkIcon     = document.getElementById('check-icon');
+    rememberCheck.addEventListener('change', () => {
+        checkIcon.classList.toggle('hidden', !rememberCheck.checked);
+    });
+
+    /* ── Ripple ── */
+    function createRipple(e) {
+        const btn  = e.currentTarget;
+        const rect = btn.getBoundingClientRect();
+        const r    = document.createElement('span');
+        const size = Math.max(btn.clientWidth, btn.clientHeight);
+        r.className = 'ripple';
+        r.style.cssText = `width:${size}px;height:${size}px;left:${e.clientX - rect.left - size/2}px;top:${e.clientY - rect.top - size/2}px`;
+        btn.appendChild(r);
+        r.addEventListener('animationend', () => r.remove());
+    }
+    document.getElementById('login-btn').addEventListener('click', createRipple);
+
+    /* ── Validation ── */
+    function validateFields() {
+        const user = document.getElementById('username');
+        const pass = document.getElementById('password');
+        const uErr = document.getElementById('username-err');
+        const pErr = document.getElementById('password-err');
+        let valid = true;
+
+        if (!user.value.trim()) {
+            user.classList.add('error'); uErr.classList.remove('hidden'); valid = false;
+        } else {
+            user.classList.remove('error'); uErr.classList.add('hidden');
+        }
+        if (!pass.value.trim()) {
+            pass.classList.add('error'); pErr.classList.remove('hidden'); valid = false;
+        } else {
+            pass.classList.remove('error'); pErr.classList.add('hidden');
+        }
+        return valid;
+    }
+
+    /* ── Handle Login ── */
+    async function handleLogin(e) {
+        if (!validateFields()) {
+            document.getElementById('login-form-wrapper').classList.add('shake');
+            setTimeout(() => document.getElementById('login-form-wrapper').classList.remove('shake'), 400);
+            return;
+        }
+
+        const btn   = document.getElementById('login-btn');
+        const label = document.getElementById('btn-label');
+        btn.classList.add('loading');
+        label.innerHTML = '<span class="spinner mr-2"></span>Signing in…';
+
+        const username = document.getElementById('username').value.trim();
+        const password = document.getElementById('password').value.trim();
+        const remember = document.getElementById('remember').checked;
+
+        try {
+            const res = await fetch('/api/auth/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password, remember })
+            });
+
+            const data = await res.json();
+
+            if (!res.ok) {
+                // Server returned 401 / 403
+                btn.classList.remove('loading');
+                label.textContent = 'Login';
+                const banner = document.getElementById('error-banner');
+                banner.classList.remove('hidden');
+                banner.classList.add('flex');
+                document.getElementById('error-text').textContent =
+                    data.detail || 'Invalid username or password. Please try again.';
+                document.getElementById('login-form-wrapper').classList.add('shake');
+                setTimeout(() => document.getElementById('login-form-wrapper').classList.remove('shake'), 400);
+                return;
+            }
+
+            // ── Success: store token + user, then redirect ──
+            localStorage.setItem('sdgnext_token', data.token);
+            localStorage.setItem('sdgnext_user',  JSON.stringify(data.user));
+
+            // Animate out the form
+            document.getElementById('login-form-wrapper').style.transition = 'opacity 0.3s';
+            document.getElementById('login-form-wrapper').style.opacity = '0';
+            setTimeout(() => {
+                document.getElementById('login-form-wrapper').classList.add('hidden');
+                document.getElementById('success-state').classList.remove('hidden');
+            }, 300);
+
+            // Redirect to home after brief success moment
+            setTimeout(() => { window.location.href = '/'; }, 1800);
+
+        } catch (err) {
+            btn.classList.remove('loading');
+            label.textContent = 'Login';
+            const banner = document.getElementById('error-banner');
+            banner.classList.remove('hidden');
+            banner.classList.add('flex');
+            document.getElementById('error-text').textContent =
+                'Network error. Please check your connection and try again.';
+            document.getElementById('login-form-wrapper').classList.add('shake');
+            setTimeout(() => document.getElementById('login-form-wrapper').classList.remove('shake'), 400);
+        }
+    }
+
+    /* ── Enter key submits ── */
+    document.addEventListener('keydown', e => {
+        if (e.key === 'Enter') handleLogin(e);
+    });
+
+    /* ── Error banner dismiss on input ── */
+    ['username','password'].forEach(id => {
+        document.getElementById(id).addEventListener('input', () => {
+            const b = document.getElementById('error-banner');
+            b.classList.add('hidden'); b.classList.remove('flex');
+        });
+    });
+
+    /* ══════════════════════════════════════
+       RIGHT PANEL
+    ══════════════════════════════════════ */
+
+    /* ── Carousel ── */
+    let currentSlide = 0;
+    const slides = document.querySelectorAll('.slide');
+    const dots   = document.querySelectorAll('.dot');
+    let carouselTimer;
+
+    function goToSlide(idx) {
+        slides[currentSlide].classList.remove('active');
+        slides[currentSlide].classList.add('exit');
+        dots[currentSlide].classList.remove('active');
+        setTimeout(() => { slides[currentSlide].classList.remove('exit'); }, 700);
+        currentSlide = idx;
+        slides[currentSlide].classList.add('active');
+        dots[currentSlide].classList.add('active');
+        resetTimer();
+    }
+
+    function nextSlide() { goToSlide((currentSlide + 1) % slides.length); }
+
+    function resetTimer() {
+        clearInterval(carouselTimer);
+        carouselTimer = setInterval(nextSlide, 4500);
+    }
+    resetTimer();
+
+    /* ── Bird grid ── */
+    (function buildBirds() {
+        const grid    = document.getElementById('bird-grid');
+        const rows    = 7, cols = 10;
+        const sizes   = [6, 7, 8, 9, 10, 11];
+        const opacities = [0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1];
+        const wrap    = document.createElement('div');
+        wrap.style.cssText = 'display:grid;grid-template-columns:repeat(10,18px);gap:10px 12px;';
+
+        for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols; c++) {
+                const skip = (r + c) % 3 === 0;
+                const s    = skip ? 0 : sizes[Math.floor(Math.random() * sizes.length)];
+                const o    = opacities[Math.floor(Math.random() * opacities.length)];
+                const div  = document.createElement('div');
+                div.style.cssText = `width:18px;height:18px;display:flex;align-items:center;justify-content:center;`;
+                if (!skip) {
+                    // simple bird chevron svg
+                    div.innerHTML = `<svg width="${s}" height="${s}" viewBox="0 0 20 12" style="fill:#ec4899;opacity:${o};transform:rotate(${-10 + Math.random()*20}deg)">
+                        <path d="M0 6 Q5 0 10 6 Q15 0 20 6" stroke="#ec4899" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+                    </svg>`;
+                }
+                wrap.appendChild(div);
+            }
+        }
+        grid.appendChild(wrap);
+    })();
+    </script>
+</body>
+</html>

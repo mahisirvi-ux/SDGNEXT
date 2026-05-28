@@ -279,6 +279,28 @@ class MockService(Base):
 
 
 # ============================================================
+# USER MASTER (Authentication)
+# ============================================================
+
+class UserMaster(Base):
+    """Platform users with login credentials.
+    Roles: 'admin' | 'manager' | 'viewer'
+    """
+    __tablename__ = "user_master"
+
+    id            = Column(Integer, primary_key=True, index=True)
+    full_name     = Column(String(150), nullable=False)
+    username      = Column(String(80),  unique=True, nullable=False, index=True)
+    email         = Column(String(150), unique=True, nullable=False, index=True)
+    hashed_password = Column(Text, nullable=False)
+    role          = Column(String(30),  nullable=False, default="viewer")   # admin | manager | viewer
+    is_active     = Column(Boolean, default=True, nullable=False)
+    last_login_at = Column(TIMESTAMP, nullable=True)
+    created_at    = Column(TIMESTAMP, server_default=func.now())
+    updated_at    = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+
+
+# ============================================================
 # DAILY METRIC SNAPSHOTS (Landing Page Sparklines)
 # ============================================================
 

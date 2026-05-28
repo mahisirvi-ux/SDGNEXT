@@ -15,7 +15,7 @@ from app.services.identity_validator import enrich_owner_label
 from app.core.mom_engine import generate_and_send_mom
 from app.models.domain import IntegrationTouchpoint, IDRFunctional, IDRTechnical, IDRActionLog, TechnicalDocument
 # Import our new architecture
-from app.api.routes import upload, projects, tasks, integrations, mom, followups, mocks
+from app.api.routes import upload, projects, tasks, integrations, mom, followups, mocks, auth as auth_router
 from app.core.email_engine import generate_and_send_daily_summary, send_followup_nudges, send_mom_pointer_nudges
 import mimetypes
 from datetime import date, datetime
@@ -85,6 +85,7 @@ app.add_middleware(
 )
 
 # 3. Include our modular API routes
+app.include_router(auth_router.router)
 app.include_router(upload.router)
 app.include_router(projects.router) 
 app.include_router(tasks.router)
@@ -159,6 +160,10 @@ if os.path.exists("css"):
     app.mount("/css", StaticFiles(directory="css"), name="css")
 if os.path.exists("js"):
     app.mount("/js", StaticFiles(directory="js"), name="js")
+
+@app.get("/login")
+async def read_login():
+    return FileResponse('login.html')
 
 @app.get("/")
 async def read_landing():

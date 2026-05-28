@@ -16,13 +16,15 @@
 
     <!-- Top Bar -->
         <header class="bg-shell text-white">
-        <div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+                <div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
                         <div class="flex items-center gap-3">
                 <a href="/" class="hover:opacity-80 transition-opacity" title="Home">
                     <h1 class="text-lg font-bold tracking-tight">SDG<span class="text-pink-400">NEXT</span></h1>
                 </a>
                 <span class="text-[10px] uppercase tracking-widest text-slate-400 hidden sm:inline">Command Center</span>
             </div>
+            <!-- User badge injected here by auth-guard.js -->
+            <div id="user-badge-anchor"></div>
         </div>
     </header>
 
@@ -82,6 +84,7 @@
         </div>
     </div>
 
+    <script src="/js/auth-guard.js"></script>
     <script src="/js/landing.js?v=3"></script>
 </body>
 </html>

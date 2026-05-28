@@ -109,11 +109,14 @@
                     <input type="file" id="teamLovInput" class="hidden" accept=".csv">
                 </label>
 
-                <!-- Hidden file inputs driven by the Manage Identities menu above -->
+                                <!-- Hidden file inputs driven by the Manage Identities menu above -->
                 <input type="file" id="departmentsCsvInput" class="hidden" accept=".csv">
                 <input type="file" id="teamMembersCsvInput" class="hidden" accept=".csv">
                 <!-- Kept for backward compat with any older JS still listening on it; not exposed via UI. -->
                 <input type="file" id="teamLovInput" class="hidden" accept=".csv">
+
+                <!-- User badge injected here by auth-guard.js -->
+                <div id="user-badge-anchor" class="ml-1"></div>
             </div>
         </header>
 
@@ -315,7 +318,8 @@
     </main>
 
         <!-- 1. Dashboard + Workshop Board Script -->
-    <script type="module" src="/js/app-dashboard.js?v=32"></script>
+        <script src="/js/auth-guard.js"></script>
+        <script type="module" src="/js/app-dashboard.js?v=32"></script>
     
     <!-- 2. THE NEW PHASE 2 & NAVIGATION SCRIPT -->
     <script src="js/phase2_technical.js?v=30"></script>

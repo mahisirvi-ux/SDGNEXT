@@ -46,6 +46,8 @@
                 </div>
             </div>
                 <div class="flex items-center gap-2.5">
+                    <!-- User badge injected here by auth-guard.js -->
+                    <div id="user-badge-anchor" class="mr-1"></div>
                                 <button id="fd-btn-generate" onclick="generateWUD()" class="hidden flex items-center gap-1.5 bg-white/10 border border-white/20 text-white hover:bg-white/20 text-[11px] font-bold py-2 px-4 rounded-lg transition-all">
                                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
                                     Generate WUD
@@ -700,6 +702,7 @@
         </div>
     </div>
 </div>
+    <script src="/js/auth-guard.js"></script>
     <script src="/js/details.js?v=20"></script>
     <script src="/js/mom.js?v=1"></script>
     <script src="/js/followups.js?v=1"></script>
