@@ -1,4 +1,4 @@
-// ==========================================
+﻿// ==========================================
 // Landing Page — js/landing.js
 // Analytical sparkline cards + inline drilldown
 // Executive Polish Edition
@@ -233,27 +233,77 @@ function renderDrilldown(projectId, d) {
     const step2Done = hasTeam;
     // step3 (touchpoints) is always available once the other two are done — but upload is always enabled once project exists
 
-        const stepCard = (num, icon, title, subtitle, uploadId, inputId, locked, done) => {
-        const lockedAttr   = locked ? 'disabled' : '';
-        const lockedCursor = locked ? 'cursor-not-allowed opacity-40' : 'cursor-pointer hover:opacity-90';
-        const doneBadge    = done
-            ? `<span class="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
-                 <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>Done
-               </span>`
-            : (locked
-                ? `<span class="text-[10px] font-bold text-slate-400 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-full">Locked</span>`
-                : `<span class="text-[10px] font-bold text-amber-600 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">Pending</span>`);
+        // Unique dropdown key per step per project
+        const stepCard = (title, dropKey, inputId, locked, done, manualFn) => {
+            const doneBadge = done
+                ? `<span class="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                     <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>Done
+                   </span>`
+                : (locked
+                    ? `<span class="text-[10px] font-bold text-slate-400 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-full">Locked</span>`
+                    : `<span class="text-[10px] font-bold text-amber-600 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">Pending</span>`);
 
-        return `
-        <button type="button" id="${uploadId}"
-            ${lockedAttr}
-            onclick="document.getElementById('${inputId}').click()"
-            class="w-full flex items-center justify-between gap-3 px-4 py-3 rounded-lg border text-left transition-all ${lockedCursor} ${done ? 'border-emerald-200 bg-emerald-50' : (locked ? 'border-slate-200 bg-slate-50' : 'bg-[#1a233a] border-[#1a233a]')}"
-            title="${locked ? 'Complete the previous step first' : title}">
-            <span class="text-sm font-semibold ${done ? 'text-emerald-700' : (locked ? 'text-slate-400' : 'text-white')}">${title}</span>
-            ${doneBadge}
-        </button>`;
-    };
+            const wrapperBg  = done    ? 'border-emerald-200 bg-emerald-50'
+                             : locked  ? 'border-slate-200 bg-slate-100 opacity-50'
+                             :           'bg-[#1a233a] border-[#1a233a]';
+            const textColor  = done    ? 'text-emerald-700'
+                             : locked  ? 'text-slate-400'
+                             :           'text-white';
+            const caretColor = done    ? 'text-emerald-500'
+                             : locked  ? 'text-slate-300'
+                             :           'text-white/70';
+
+            const disabledPointer = locked ? 'pointer-events-none' : '';
+
+            return `
+            <div class="relative ${disabledPointer}" id="dd-wrap-${dropKey}">
+                <!-- Main button row -->
+                <div class="w-full flex items-center rounded-lg border overflow-hidden ${wrapperBg}">
+                    <!-- Label area -->
+                    <div class="flex-1 flex items-center justify-between gap-2 px-4 py-3">
+                        <span class="text-sm font-semibold ${textColor}">${title}</span>
+                        ${doneBadge}
+                    </div>
+                    <!-- Divider -->
+                    <div class="w-px self-stretch ${done ? 'bg-emerald-200' : (locked ? 'bg-slate-200' : 'bg-white/20')}"></div>
+                    <!-- Caret toggle -->
+                    <button type="button"
+                        onclick="toggleStepDropdown('dd-menu-${dropKey}', 'dd-caret-${dropKey}')"
+                        class="px-3 py-3 flex items-center justify-center transition-colors ${done ? 'hover:bg-emerald-100' : 'hover:bg-white/10'}"
+                        title="More options">
+                        <svg id="dd-caret-${dropKey}" class="w-4 h-4 transition-transform ${caretColor}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                        </svg>
+                    </button>
+                </div>
+
+                <!-- Dropdown menu -->
+                <div id="dd-menu-${dropKey}" class="hidden absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg z-30 overflow-hidden">
+                    <!-- Upload CSV -->
+                    <button type="button"
+                        onclick="document.getElementById('${inputId}').click(); toggleStepDropdown('dd-menu-${dropKey}', 'dd-caret-${dropKey}')"
+                        class="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-slate-50 transition-colors border-b border-slate-100">
+                        <div class="w-7 h-7 rounded-md bg-[#1a233a] flex items-center justify-center flex-shrink-0">
+                            <svg class="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+                        </div>
+                        <span class="text-xs font-semibold text-[#1a233a]">Upload CSV</span>
+                    </button>
+                    <!-- Add Manually -->
+                    <button type="button"
+                        onclick="${manualFn}; toggleStepDropdown('dd-menu-${dropKey}', 'dd-caret-${dropKey}')"
+                        class="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-slate-50 transition-colors">
+                        <div class="w-7 h-7 rounded-md bg-slate-100 flex items-center justify-center flex-shrink-0">
+                            <svg class="w-3.5 h-3.5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                        </div>
+                        <span class="text-xs font-semibold text-slate-700">Add Manually</span>
+                    </button>
+                </div>
+
+                <!-- Hidden file input -->
+                <input type="file" id="${inputId}" class="hidden" accept=".csv"
+                    onchange="handleDrilldownUpload(event, ${projectId}, '${dropKey.split('-')[0]}')"/>
+            </div>`;
+        };
 
     return `<div class="bg-white rounded-xl border p-7 relative" style="border-color: var(--border-default); box-shadow: 0 1px 3px rgba(0,0,0,0.03);">
         <button onclick="closeDrilldown()" class="absolute top-5 right-5" style="color: var(--text-meta);" aria-label="Close drilldown">
@@ -271,41 +321,30 @@ function renderDrilldown(projectId, d) {
                 <div class="mt-8 pt-6" style="border-top: 1px solid var(--border-subtle);">
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 ${stepCard(
-                    '1',
-                    'dept-icon',
-                    'Upload Departments',
-                    'CSV: Dept ID · Name · Email · Is CRM',
-                    'dd-upload-depts-btn',
+                    'Departments',
+                    'departments-' + projectId,
                     'dd-depts-input-' + projectId,
                     false,
-                    step1Done
+                    step1Done,
+                    `openManualModal('departments', ${projectId})`
                 )}
                 ${stepCard(
-                    '2',
-                    'team-icon',
-                    'Upload Team Members',
-                    'CSV: Name · Email · Phone · Dept ID',
-                    'dd-upload-team-btn',
+                    'Team Members',
+                    'team-' + projectId,
                     'dd-team-input-' + projectId,
                     !step1Done,
-                    step2Done
+                    step2Done,
+                    `openManualModal('team', ${projectId})`
                 )}
-                                ${stepCard(
-                    '3',
-                    'csv-icon',
-                    'Upload Touchpoints',
-                    'CSV: Integration touchpoints data',
-                    'dd-upload-tp-btn',
+                ${stepCard(
+                    'Touchpoints',
+                    'touchpoints-' + projectId,
                     'dd-tp-input-' + projectId,
                     !step2Done,
-                    false
+                    false,
+                    `openManualModal('touchpoints', ${projectId})`
                 )}
             </div>
-
-            <!-- Hidden file inputs -->
-            <input type="file" id="dd-depts-input-${projectId}"  class="hidden" accept=".csv" onchange="handleDrilldownUpload(event, ${projectId}, 'departments')">
-            <input type="file" id="dd-team-input-${projectId}"   class="hidden" accept=".csv" onchange="handleDrilldownUpload(event, ${projectId}, 'team')">
-            <input type="file" id="dd-tp-input-${projectId}"     class="hidden" accept=".csv" onchange="handleDrilldownUpload(event, ${projectId}, 'touchpoints')">
 
             <!-- Upload status message -->
             <div id="dd-upload-status-${projectId}" class="hidden mt-3 text-[11px] font-medium px-3 py-2 rounded-lg border"></div>
@@ -514,6 +553,288 @@ window.handleDrilldownUpload = async function(event, projectId, uploadType) {
 };
 
 // ==========================================
+// STEP DROPDOWN TOGGLE
+// ==========================================
+
+window.toggleStepDropdown = function(menuId, caretId) {
+    document.querySelectorAll('[id^="dd-menu-"]').forEach(function(el) {
+        if (el.id !== menuId) {
+            el.classList.add('hidden');
+            var c = document.getElementById(el.id.replace('dd-menu-', 'dd-caret-'));
+            if (c) c.classList.remove('rotate-180');
+        }
+    });
+    var menu  = document.getElementById(menuId);
+    var caret = document.getElementById(caretId);
+    if (menu)  menu.classList.toggle('hidden');
+    if (caret) caret.classList.toggle('rotate-180');
+};
+
+document.addEventListener('click', function(e) {
+    if (!e.target.closest('[id^="dd-wrap-"]')) {
+        document.querySelectorAll('[id^="dd-menu-"]').forEach(function(el) {
+            el.classList.add('hidden');
+        });
+        document.querySelectorAll('[id^="dd-caret-"]').forEach(function(el) {
+            el.classList.remove('rotate-180');
+        });
+    }
+});
+
+// ==========================================
+// MANUAL ENTRY MODAL
+// ==========================================
+
+window.openManualModal = async function(type, projectId) {
+    var modal    = document.getElementById('manual-entry-modal');
+    var title    = document.getElementById('manual-modal-title');
+    var body     = document.getElementById('manual-modal-body');
+    var projId   = document.getElementById('manual-modal-project-id');
+    var projType = document.getElementById('manual-modal-type');
+    if (!modal) return;
+
+    projId.value   = projectId;
+    projType.value = type;
+
+    // Fetch dept options (for team modal) AND team member options (for touchpoints modal)
+    var deptOptions   = [];
+    var memberOptions = [];
+
+    if (type === 'team') {
+        try {
+            var r = await fetch('/api/projects/' + projectId + '/departments');
+            if (r.ok) {
+                var depts = await r.json();
+                deptOptions = depts.map(function(d) {
+                    return { value: d.dept_id, label: d.dept_id + ' \u2014 ' + d.name };
+                });
+            }
+        } catch(e) {}
+    }
+
+    if (type === 'touchpoints') {
+        try {
+            var r2 = await fetch('/api/projects/' + projectId + '/team-members');
+            if (r2.ok) {
+                var members = await r2.json();
+                memberOptions = members.map(function(m) {
+                    return { value: m.full_name, label: m.full_name + ' (' + m.dept_id + ')' };
+                });
+            }
+        } catch(e) {}
+    }
+
+    var configs = {
+        departments: {
+            title: 'Add Department',
+            fields: [
+                { id: 'f-dept-id',    label: 'Dept ID',  placeholder: 'e.g. CBS',          required: true  },
+                { id: 'f-dept-name',  label: 'Name',     placeholder: 'e.g. Core Banking', required: true  },
+                { id: 'f-dept-email', label: 'Email',    placeholder: 'dept@company.com',  required: false },
+                { id: 'f-dept-crm',   label: 'Is CRM',   placeholder: '',                  required: false, type: 'select', options: ['Yes','No'] }
+            ]
+        },
+        team: {
+            title: 'Add Team Member',
+            fields: [
+                { id: 'f-tm-name',  label: 'Full Name',    placeholder: 'e.g. John Smith',  required: true  },
+                { id: 'f-tm-email', label: 'Email',        placeholder: 'john@company.com', required: true  },
+                { id: 'f-tm-phone', label: 'Mobile Phone', placeholder: '+91-9999999999',   required: false },
+                { id: 'f-tm-dept',  label: 'Dept ID',      placeholder: '',                 required: true,  type: 'dept-select' },
+                { id: 'f-tm-crm',   label: 'Is CRM User',  placeholder: '',                 required: false, type: 'select', options: ['Yes','No'] }
+            ]
+        },
+        touchpoints: {
+            title: 'Add Touchpoint',
+            fields: [
+                { id: 'f-tp-name',       label: 'Integration Touchpoint',         placeholder: 'e.g. Customer CIF Creation',  required: true,  col: 'full' },
+                { id: 'f-tp-module',     label: 'Module / Journey',                placeholder: 'e.g. Assets',                required: false },
+                { id: 'f-tp-mod-owner',  label: 'Module Owner (Functional)',       placeholder: '',                            required: false, type: 'member-select' },
+                { id: 'f-tp-tech-owner', label: 'Technical Owner (CRM)',           placeholder: '',                            required: false, type: 'member-select' },
+                { id: 'f-tp-owner',      label: 'Business Dept Owner',             placeholder: '',                            required: false, type: 'member-select' },
+                { id: 'f-tp-flow',       label: 'Business Flow / Objective',       placeholder: 'Describe the business flow',  required: false, type: 'textarea' },
+                { id: 'f-tp-direction',  label: 'Integration Direction',           placeholder: '',                            required: false, type: 'select', options: ['Inbound','Outbound','Bidirectional'] },
+                { id: 'f-tp-source',     label: 'Source System',                   placeholder: 'e.g. Core Banking',           required: false },
+                { id: 'f-tp-target',     label: 'Target System',                   placeholder: 'e.g. CRM',                    required: false },
+                { id: 'f-tp-trigger',    label: 'Trigger Mechanism',               placeholder: 'e.g. On save / Batch / API',  required: false },
+                { id: 'f-tp-ux',         label: 'UX Expectation',                  placeholder: 'e.g. Real-time / Async',      required: false },
+                { id: 'f-tp-fallback',   label: 'Business Fallback',               placeholder: 'Fallback if integration fails',required: false, type: 'textarea' },
+                { id: 'f-tp-remarks',    label: 'IDR Remarks / Notes',             placeholder: 'Any notes',                   required: false, type: 'textarea' },
+                { id: 'f-tp-status',     label: 'IDR Status',                      placeholder: '',                            required: false, type: 'select', options: ['Pending','In Progress','Signed-Off','On Hold'] },
+                { id: 'f-tp-inputs',     label: 'Inputs',                          placeholder: 'Input fields / data',         required: false, type: 'textarea' },
+                { id: 'f-tp-output',     label: 'Expected Output',                 placeholder: 'Output / response',           required: false, type: 'textarea' },
+                { id: 'f-tp-dept',       label: 'Business Department',             placeholder: 'e.g. Retail Banking',         required: false },
+                { id: 'f-tp-signoff',    label: 'IDR SignOff Date',                placeholder: 'YYYY-MM-DD',                  required: false },
+                { id: 'f-tp-pending',    label: 'Pending With',                    placeholder: '',                            required: false, type: 'member-select' },
+                { id: 'f-tp-pointers',   label: 'Open Pointers',                   placeholder: 'Any open items',              required: false, type: 'textarea' },
+                { id: 'f-tp-inttype',    label: 'Integration Type',                placeholder: '',                            required: false, type: 'select', options: ['API','Database','Batch','File Transfer'] },
+                { id: 'f-tp-start',      label: 'Start Time',                      placeholder: 'YYYY-MM-DD HH:MM',            required: false },
+                { id: 'f-tp-end',        label: 'End Time',                        placeholder: 'YYYY-MM-DD HH:MM',            required: false }
+            ]
+        }
+    };
+
+    var cfg = configs[type];
+    if (!cfg) return;
+    title.textContent = cfg.title;
+
+    // For touchpoints: 2-column grid layout
+    var isTP = (type === 'touchpoints');
+
+    // Widen the modal box for touchpoints (many fields)
+    var box = document.getElementById('manual-modal-box');
+    if (box) box.style.width = isTP ? '780px' : '420px';
+    var wrapClass = isTP ? 'grid grid-cols-2 gap-3' : 'space-y-3';
+
+    body.innerHTML = '<div class="' + wrapClass + '">' + cfg.fields.map(function(f) {
+        var input;
+        var colClass = (isTP && f.col === 'full') ? 'col-span-2' : '';
+
+        if (f.type === 'dept-select') {
+            var optHtml = '<option value="">-- select department --</option>';
+            if (deptOptions.length === 0) {
+                optHtml += '<option value="" disabled>No departments found</option>';
+            } else {
+                optHtml += deptOptions.map(function(o){ return '<option value="' + o.value + '">' + o.label + '</option>'; }).join('');
+            }
+            input = '<select id="' + f.id + '" class="w-full text-xs p-2.5 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-200 focus:outline-none bg-white">' + optHtml + '</select>';
+
+        } else if (f.type === 'member-select') {
+            var mHtml = '<option value="">-- select member --</option>';
+            if (memberOptions.length === 0) {
+                mHtml += '<option value="" disabled>No team members found</option>';
+            } else {
+                mHtml += memberOptions.map(function(o){ return '<option value="' + o.value + '">' + o.label + '</option>'; }).join('');
+            }
+            input = '<select id="' + f.id + '" class="w-full text-xs p-2.5 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-200 focus:outline-none bg-white">' + mHtml + '</select>';
+
+        } else if (f.type === 'select') {
+            input = '<select id="' + f.id + '" class="w-full text-xs p-2.5 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-200 focus:outline-none bg-white"><option value="">-- select --</option>' + f.options.map(function(o){ return '<option value="' + o + '">' + o + '</option>'; }).join('') + '</select>';
+
+        } else if (f.type === 'textarea') {
+            input = '<textarea id="' + f.id + '" rows="2" placeholder="' + f.placeholder + '" class="w-full text-xs p-2.5 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-200 focus:outline-none resize-none"></textarea>';
+
+        } else {
+            input = '<input type="text" id="' + f.id + '" placeholder="' + f.placeholder + '" class="w-full text-xs p-2.5 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-200 focus:outline-none">';
+        }
+
+        return '<div class="' + colClass + '"><label class="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">' + f.label + (f.required ? ' <span class="text-pink-500">*</span>' : '') + '</label>' + input + '</div>';
+    }).join('') + '</div>';
+
+    document.getElementById('manual-modal-error').classList.add('hidden');
+    modal.classList.remove('hidden');
+    setTimeout(function() {
+        var first = body.querySelector('input, select, textarea');
+        if (first) first.focus();
+    }, 80);
+};
+
+window.closeManualModal = function() {
+    document.getElementById('manual-entry-modal').classList.add('hidden');
+};
+
+window.submitManualEntry = async function() {
+    var type        = document.getElementById('manual-modal-type').value;
+    var projectId   = parseInt(document.getElementById('manual-modal-project-id').value);
+    var errorEl     = document.getElementById('manual-modal-error');
+    var project     = landingState.projects.find(function(p) { return p.id === projectId; });
+    var projectName = project ? project.project_name : null;
+
+    if (!projectName) {
+        errorEl.textContent = 'Project not found.';
+        errorEl.classList.remove('hidden');
+        return;
+    }
+
+    var endpointMap = {
+        departments: '/api/projects/' + projectId + '/departments',
+        team:        '/api/projects/' + projectId + '/team-members',
+        touchpoints: '/api/projects/' + projectId + '/touchpoints'
+    };
+
+    var payload = {};
+
+    if (type === 'departments') {
+        payload = {
+            dept_id: (document.getElementById('f-dept-id')?.value    || '').trim(),
+            name:    (document.getElementById('f-dept-name')?.value   || '').trim(),
+            email:   (document.getElementById('f-dept-email')?.value  || '').trim(),
+            is_crm:  (document.getElementById('f-dept-crm')?.value    || '').trim()
+        };
+        if (!payload.dept_id || !payload.name) {
+            errorEl.textContent = 'Dept ID and Name are required.';
+            errorEl.classList.remove('hidden');
+            return;
+        }
+    } else if (type === 'team') {
+        payload = {
+            name:        (document.getElementById('f-tm-name')?.value  || '').trim(),
+            email:       (document.getElementById('f-tm-email')?.value || '').trim(),
+            phone:       (document.getElementById('f-tm-phone')?.value || '').trim(),
+            dept_id:     (document.getElementById('f-tm-dept')?.value  || '').trim(),
+            is_crm_user: (document.getElementById('f-tm-crm')?.value   || '').trim()
+        };
+        if (!payload.name || !payload.email || !payload.dept_id) {
+            errorEl.textContent = 'Name, Email and Dept ID are required.';
+            errorEl.classList.remove('hidden');
+            return;
+        }
+    } else if (type === 'touchpoints') {
+        payload = {
+            name:                    (document.getElementById('f-tp-name')?.value       || '').trim(),
+            module:                  (document.getElementById('f-tp-module')?.value     || '').trim(),
+            module_owner_functional: (document.getElementById('f-tp-mod-owner')?.value  || '').trim(),
+            technical_owner:         (document.getElementById('f-tp-tech-owner')?.value || '').trim(),
+            owner:                   (document.getElementById('f-tp-owner')?.value      || '').trim(),
+            business_flow:           (document.getElementById('f-tp-flow')?.value       || '').trim(),
+            integration_direction:   (document.getElementById('f-tp-direction')?.value  || '').trim(),
+            source_system:           (document.getElementById('f-tp-source')?.value     || '').trim(),
+            target_system:           (document.getElementById('f-tp-target')?.value     || '').trim(),
+            trigger_mechanism:       (document.getElementById('f-tp-trigger')?.value    || '').trim(),
+            ux_expectation:          (document.getElementById('f-tp-ux')?.value         || '').trim(),
+            business_fallback:       (document.getElementById('f-tp-fallback')?.value   || '').trim(),
+            idr_remarks:             (document.getElementById('f-tp-remarks')?.value    || '').trim(),
+            idr_status:              (document.getElementById('f-tp-status')?.value     || 'Pending').trim(),
+            inputs:                  (document.getElementById('f-tp-inputs')?.value     || '').trim(),
+            expected_output:         (document.getElementById('f-tp-output')?.value     || '').trim(),
+            business_department:     (document.getElementById('f-tp-dept')?.value       || '').trim(),
+            idr_signoff_date:        (document.getElementById('f-tp-signoff')?.value    || '').trim(),
+            pending_with:            (document.getElementById('f-tp-pending')?.value    || '').trim(),
+            open_pointers:           (document.getElementById('f-tp-pointers')?.value   || '').trim(),
+            integration_type:        (document.getElementById('f-tp-inttype')?.value    || '').trim(),
+            start_time:              (document.getElementById('f-tp-start')?.value      || '').trim(),
+            end_time:                (document.getElementById('f-tp-end')?.value        || '').trim()
+        };
+        if (!payload.name) {
+            errorEl.textContent = 'Touchpoint name is required.';
+            errorEl.classList.remove('hidden');
+            return;
+        }
+    }
+
+    try {
+        var res = await fetch(endpointMap[type], {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        if (res.ok) {
+            closeManualModal();
+            delete landingState.drilldownCache[projectId];
+            await loadLanding();
+            setTimeout(function() { expandProject(projectId); }, 300);
+        } else {
+            var err = await res.json().catch(function() { return {}; });
+            errorEl.textContent = err.detail || err.message || 'Save failed.';
+            errorEl.classList.remove('hidden');
+        }
+    } catch(e) {
+        errorEl.textContent = 'Network error. Please try again.';
+        errorEl.classList.remove('hidden');
+    }
+};
+
+// ==========================================
 // NEW PROJECT MODAL (preserved)
 // ==========================================
 
@@ -563,7 +884,6 @@ async function submitNewProject() {
     }
 }
 
-// Enter/Escape key handling for modal
 document.addEventListener('keydown', (e) => {
     const modal = document.getElementById('new-project-modal');
     if (!modal || modal.classList.contains('hidden')) return;

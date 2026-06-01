@@ -82,6 +82,26 @@
         </div>
     </div>
 
-    <script src="/js/landing.js?v=3"></script>
+        <!-- Manual Entry Modal -->
+        <div id="manual-entry-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+            <div id="manual-modal-box" class="bg-white rounded-xl shadow-2xl w-[420px] p-6 max-h-[90vh] flex flex-col">
+                <div class="flex items-center justify-between mb-5 flex-shrink-0">
+                    <h3 id="manual-modal-title" class="text-sm font-bold text-[#1a233a]">Add Entry</h3>
+                    <button onclick="closeManualModal()" class="text-slate-400 hover:text-slate-600 transition-colors">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                    </button>
+                </div>
+                <div id="manual-modal-body" class="overflow-y-auto flex-1 pr-1"></div>
+                <p id="manual-modal-error" class="hidden mt-2 text-[11px] text-red-600 bg-red-50 border border-red-200 rounded-md px-3 py-2 flex-shrink-0"></p>
+                <input type="hidden" id="manual-modal-project-id">
+                <input type="hidden" id="manual-modal-type">
+                <div class="flex justify-end gap-2 mt-5 pt-4 border-t border-slate-100 flex-shrink-0">
+                    <button onclick="closeManualModal()" class="text-[11px] font-bold text-slate-500 px-4 py-2 rounded-lg border border-slate-200 hover:bg-slate-50">Cancel</button>
+                    <button onclick="submitManualEntry()" class="text-[11px] font-bold text-white bg-[#1a233a] hover:bg-slate-800 px-5 py-2 rounded-lg shadow transition-colors">Save</button>
+                </div>
+            </div>
+        </div>
+
+    <script src="/js/landing.js?v=4"></script>
 </body>
 </html>

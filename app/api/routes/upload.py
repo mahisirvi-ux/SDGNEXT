@@ -4,6 +4,8 @@ import traceback
 from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
+from pydantic import BaseModel
+from typing import Optional
 from app.core.database import get_db
 from app.services.file_parser import process_idr_upload
 from app.models.domain import (
@@ -252,6 +254,239 @@ async def upload_team_members_csv(project_name: str, file: UploadFile = File(...
             status_code=500,
             detail=f"Error processing team members upload: {str(e)}"
         )
+
+
+# ============================================================
+# GET: Departments list for a project (used by manual-entry dropdown)
+# ============================================================
+@router.get("/api/projects/{project_id}/departments")
+def get_departments_for_project(project_id: int, db: Session = Depends(get_db)):
+    """Returns all active departments for a project — used to populate Dept ID dropdowns."""
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    depts = db.query(DepartmentMaster).filter(
+        DepartmentMaster.project_id == project_id,
+        DepartmentMaster.is_active == True
+    ).order_by(DepartmentMaster.department_name).all()
+
+    return [
+        {"dept_id": d.dept_id, "name": d.department_name,
+         "email": d.department_email, "is_crm": d.is_crm}
+        for d in depts
+    ]
+
+
+# ============================================================
+# POST: Manual single-record entry endpoints (JSON, not CSV)
+# ============================================================
+
+class DepartmentCreate(BaseModel):
+    dept_id:   str
+    name:      str
+    email:     Optional[str] = ""
+    is_crm:    Optional[str] = "No"
+
+
+class TeamMemberCreate(BaseModel):
+    name:        str
+    email:       str
+    phone:       Optional[str] = None
+    dept_id:     str
+    is_crm_user: Optional[str] = "No"
+
+
+@router.post("/api/projects/{project_id}/departments")
+def add_department_manual(project_id: int, body: DepartmentCreate,
+                          db: Session = Depends(get_db)):
+    """Manually add a single department to a project."""
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    dept_id   = body.dept_id.strip()
+    dept_name = body.name.strip()
+    if not dept_id or not dept_name:
+        raise HTTPException(status_code=400, detail="dept_id and name are required")
+
+    existing = db.query(DepartmentMaster).filter(
+        DepartmentMaster.dept_id == dept_id
+    ).first()
+
+    if existing:
+        if existing.project_id != project_id:
+            raise HTTPException(status_code=409,
+                detail=f"Dept ID '{dept_id}' already belongs to another project")
+        existing.department_name  = dept_name
+        existing.department_email = (body.email or "").strip()
+        existing.is_crm           = _parse_bool(body.is_crm, False)
+        db.commit()
+        return {"message": f"Department '{dept_id}' updated.", "action": "updated"}
+    else:
+        db.add(DepartmentMaster(
+            dept_id          = dept_id,
+            project_id       = project_id,
+            department_name  = dept_name,
+            department_email = (body.email or "").strip(),
+            is_crm           = _parse_bool(body.is_crm, False),
+            is_active        = True,
+        ))
+        db.commit()
+        return {"message": f"Department '{dept_id}' added.", "action": "created"}
+
+
+@router.post("/api/projects/{project_id}/team-members")
+def add_team_member_manual(project_id: int, body: TeamMemberCreate,
+                           db: Session = Depends(get_db)):
+    """Manually add a single team member to a project."""
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    full_name = body.name.strip()
+    email     = body.email.strip().lower()
+    dept_id   = body.dept_id.strip()
+
+    if not full_name or not email or not dept_id:
+        raise HTTPException(status_code=400, detail="name, email and dept_id are required")
+
+    # Validate dept belongs to this project
+    dept = db.query(DepartmentMaster).filter(
+        DepartmentMaster.dept_id   == dept_id,
+        DepartmentMaster.project_id == project_id
+    ).first()
+    if not dept:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Dept ID '{dept_id}' not found under this project. Upload departments first."
+        )
+
+    existing = db.query(TeamMaster).filter(
+        TeamMaster.email   == email,
+        TeamMaster.dept_id == dept_id
+    ).first()
+
+    if existing:
+        existing.full_name    = full_name
+        existing.mobile_phone = body.phone or None
+        existing.is_crm_user  = _parse_bool(body.is_crm_user, False)
+        db.commit()
+        return {"message": f"Team member '{full_name}' updated.", "action": "updated"}
+    else:
+        db.add(TeamMaster(
+            full_name    = full_name,
+            email        = email,
+            mobile_phone = body.phone or None,
+            dept_id      = dept_id,
+            is_crm_user  = _parse_bool(body.is_crm_user, False),
+            is_active    = True,
+        ))
+        db.commit()
+        return {"message": f"Team member '{full_name}' added.", "action": "created"}
+
+
+class TouchpointCreate(BaseModel):
+    name:                    str
+    module:                  Optional[str] = ""
+    module_owner_functional: Optional[str] = ""
+    technical_owner:         Optional[str] = ""
+    business_flow:           Optional[str] = ""
+    integration_direction:   Optional[str] = ""
+    source_system:           Optional[str] = ""
+    target_system:           Optional[str] = ""
+    trigger_mechanism:       Optional[str] = ""
+    ux_expectation:          Optional[str] = ""
+    business_fallback:       Optional[str] = ""
+    idr_remarks:             Optional[str] = ""
+    idr_status:              Optional[str] = "Pending"
+    inputs:                  Optional[str] = ""
+    expected_output:         Optional[str] = ""
+    business_department:     Optional[str] = ""
+    owner:                   Optional[str] = ""
+    idr_signoff_date:        Optional[str] = ""
+    pending_with:            Optional[str] = ""
+    open_pointers:           Optional[str] = ""
+    integration_type:        Optional[str] = ""
+    start_time:              Optional[str] = ""
+    end_time:                Optional[str] = ""
+
+
+@router.get("/api/projects/{project_id}/team-members")
+def get_team_members_for_project(project_id: int, db: Session = Depends(get_db)):
+    """Returns all active team members for a project — used to populate name dropdowns."""
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    members = db.query(TeamMaster).join(
+        DepartmentMaster, TeamMaster.dept_id == DepartmentMaster.dept_id
+    ).filter(
+        DepartmentMaster.project_id == project_id,
+        TeamMaster.is_active == True
+    ).order_by(TeamMaster.full_name).all()
+
+    return [
+        {
+            "id":        m.id,
+            "full_name": m.full_name,
+            "email":     m.email,
+            "dept_id":   m.dept_id,
+        }
+        for m in members
+    ]
+
+
+@router.post("/api/projects/{project_id}/touchpoints")
+def add_touchpoint_manual(project_id: int, body: TouchpointCreate,
+                          db: Session = Depends(get_db)):
+    """Manually add a single touchpoint with full functional data."""
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    tp_name = (body.name or "").strip()
+    if not tp_name:
+        raise HTTPException(status_code=400, detail="Touchpoint name is required")
+
+    tp = IntegrationTouchpoint(project_id=project_id, name=tp_name)
+    db.add(tp)
+    db.flush()  # get tp.id before creating functional record
+
+    func = IDRFunctional(
+        touchpoint_id            = tp.id,
+        module                   = body.module or "",
+        module_owner_functional  = body.module_owner_functional or "",
+        technical_owner          = body.technical_owner or "",
+        business_flow            = body.business_flow or "",
+        integration_direction    = body.integration_direction or "",
+        source_system            = body.source_system or "",
+        target_system            = body.target_system or "",
+        trigger_mechanism        = body.trigger_mechanism or "",
+        ux_expectation           = body.ux_expectation or "",
+        business_fallback        = body.business_fallback or "",
+        idr_remarks              = body.idr_remarks or "",
+        idr_status               = body.idr_status or "Pending",
+        inputs                   = body.inputs or "",
+        expected_output          = body.expected_output or "",
+        business_department      = body.business_department or "",
+        owner                    = body.owner or "",
+        idr_signoff_date         = body.idr_signoff_date or "",
+        pending_with             = body.pending_with or "",
+        open_pointers            = body.open_pointers or "",
+    )
+    db.add(func)
+
+    # Also create the technical record with integration_type and schedule
+    tech = IDRTechnical(
+        touchpoint_id    = tp.id,
+        tech_status      = "Pending Workshop",
+        integration_type = body.integration_type or None,
+    )
+    db.add(tech)
+    db.commit()
+
+    return {"message": f"Touchpoint '{tp_name}' created.", "id": tp.id, "action": "created"}
 
 
 # ============================================================
