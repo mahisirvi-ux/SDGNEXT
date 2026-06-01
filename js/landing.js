@@ -225,18 +225,93 @@ function closeDrilldown() {
 // ==========================================
 
 function renderDrilldown(projectId, d) {
+    const hasDepts = (d.admin.department_count || 0) > 0;
+    const hasTeam  = (d.admin.team_member_count || 0) > 0;
+
+    // Step states
+    const step1Done = hasDepts;
+    const step2Done = hasTeam;
+    // step3 (touchpoints) is always available once the other two are done — but upload is always enabled once project exists
+
+        const stepCard = (num, icon, title, subtitle, uploadId, inputId, locked, done) => {
+        const lockedAttr   = locked ? 'disabled' : '';
+        const lockedCursor = locked ? 'cursor-not-allowed opacity-40' : 'cursor-pointer hover:opacity-90';
+        const doneBadge    = done
+            ? `<span class="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                 <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>Done
+               </span>`
+            : (locked
+                ? `<span class="text-[10px] font-bold text-slate-400 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-full">Locked</span>`
+                : `<span class="text-[10px] font-bold text-amber-600 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">Pending</span>`);
+
+        return `
+        <button type="button" id="${uploadId}"
+            ${lockedAttr}
+            onclick="document.getElementById('${inputId}').click()"
+            class="w-full flex items-center justify-between gap-3 px-4 py-3 rounded-lg border text-left transition-all ${lockedCursor} ${done ? 'border-emerald-200 bg-emerald-50' : (locked ? 'border-slate-200 bg-slate-50' : 'bg-[#1a233a] border-[#1a233a]')}"
+            title="${locked ? 'Complete the previous step first' : title}">
+            <span class="text-sm font-semibold ${done ? 'text-emerald-700' : (locked ? 'text-slate-400' : 'text-white')}">${title}</span>
+            ${doneBadge}
+        </button>`;
+    };
+
     return `<div class="bg-white rounded-xl border p-7 relative" style="border-color: var(--border-default); box-shadow: 0 1px 3px rgba(0,0,0,0.03);">
         <button onclick="closeDrilldown()" class="absolute top-5 right-5" style="color: var(--text-meta);" aria-label="Close drilldown">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
         </button>
         <h3 class="text-lg font-semibold mb-1" style="color: var(--text-primary);">${escapeHtml(d.admin.project_name)}</h3>
         <p class="text-xs mb-6" style="color: var(--text-secondary);">Project drilldown</p>
+
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
             ${renderAdminSection(d.admin)}
             ${renderHealthSection(d.health)}
             ${renderActivitySection(d.recent_activity)}
         </div>
-        <div class="mt-8 pt-5 flex justify-end" style="border-top: 1px solid var(--border-subtle);">
+
+                <div class="mt-8 pt-6" style="border-top: 1px solid var(--border-subtle);">
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                ${stepCard(
+                    '1',
+                    'dept-icon',
+                    'Upload Departments',
+                    'CSV: Dept ID · Name · Email · Is CRM',
+                    'dd-upload-depts-btn',
+                    'dd-depts-input-' + projectId,
+                    false,
+                    step1Done
+                )}
+                ${stepCard(
+                    '2',
+                    'team-icon',
+                    'Upload Team Members',
+                    'CSV: Name · Email · Phone · Dept ID',
+                    'dd-upload-team-btn',
+                    'dd-team-input-' + projectId,
+                    !step1Done,
+                    step2Done
+                )}
+                                ${stepCard(
+                    '3',
+                    'csv-icon',
+                    'Upload Touchpoints',
+                    'CSV: Integration touchpoints data',
+                    'dd-upload-tp-btn',
+                    'dd-tp-input-' + projectId,
+                    !step2Done,
+                    false
+                )}
+            </div>
+
+            <!-- Hidden file inputs -->
+            <input type="file" id="dd-depts-input-${projectId}"  class="hidden" accept=".csv" onchange="handleDrilldownUpload(event, ${projectId}, 'departments')">
+            <input type="file" id="dd-team-input-${projectId}"   class="hidden" accept=".csv" onchange="handleDrilldownUpload(event, ${projectId}, 'team')">
+            <input type="file" id="dd-tp-input-${projectId}"     class="hidden" accept=".csv" onchange="handleDrilldownUpload(event, ${projectId}, 'touchpoints')">
+
+            <!-- Upload status message -->
+            <div id="dd-upload-status-${projectId}" class="hidden mt-3 text-[11px] font-medium px-3 py-2 rounded-lg border"></div>
+        </div>
+
+        <div class="mt-6 flex justify-end">
             <a href="/project?id=${projectId}" class="text-xs font-semibold px-5 py-2.5 rounded-lg shadow-sm inline-flex items-center gap-2 transition-all" style="background: var(--shell); color: white;">
                 Open Project
                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3"/></svg>
@@ -357,6 +432,86 @@ function fmtDate(isoStr) {
         return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     } catch { return '\u2014'; }
 }
+
+// ==========================================
+// DRILLDOWN UPLOAD HANDLER
+// ==========================================
+
+window.handleDrilldownUpload = async function(event, projectId, uploadType) {
+    const file = event.target.files[0];
+    if (!file) return;
+    // Reset input so same file can be re-selected if needed
+    event.target.value = '';
+
+    // Find the project name from the landing state
+    const project = landingState.projects.find(p => p.id === projectId);
+    const projectName = project ? project.project_name : null;
+
+    const statusEl = document.getElementById(`dd-upload-status-${projectId}`);
+
+    const setStatus = (msg, type) => {
+        if (!statusEl) return;
+        statusEl.classList.remove('hidden', 'text-emerald-700', 'bg-emerald-50', 'border-emerald-200',
+                                            'text-red-700',     'bg-red-50',     'border-red-200',
+                                            'text-slate-600',   'bg-slate-50',   'border-slate-200');
+        if (type === 'success') {
+            statusEl.classList.add('text-emerald-700', 'bg-emerald-50', 'border-emerald-200');
+        } else if (type === 'error') {
+            statusEl.classList.add('text-red-700', 'bg-red-50', 'border-red-200');
+        } else {
+            statusEl.classList.add('text-slate-600', 'bg-slate-50', 'border-slate-200');
+        }
+        statusEl.textContent = msg;
+        statusEl.classList.remove('hidden');
+    };
+
+    if (!projectName) {
+        setStatus('Could not resolve project name. Please refresh and try again.', 'error');
+        return;
+    }
+
+    // Map uploadType to endpoint URL and label
+    const uploadMap = {
+        departments: { url: `/upload-departments/${projectName}`,  label: 'Departments' },
+        team:        { url: `/upload-team-members/${projectName}`, label: 'Team Members' },
+        touchpoints: { url: `/upload-csv/${projectName}`,          label: 'Touchpoints' }
+    };
+
+    const { url, label } = uploadMap[uploadType];
+    setStatus(`Uploading ${label}...`, 'info');
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+        const response = await fetch(url, { method: 'POST', body: formData });
+        const result   = await response.json().catch(() => ({}));
+
+        if (response.ok) {
+            let summary = result.message || `${label} uploaded successfully.`;
+            if (result.skipped_rows && Array.isArray(result.skipped_rows) && result.skipped_rows.length) {
+                summary += ` (${result.skipped_rows.length} row(s) skipped)`;
+            }
+            setStatus(`✓ ${summary}`, 'success');
+
+            // Bust the drilldown cache so re-opening reflects new counts
+            delete landingState.drilldownCache[projectId];
+
+            // Refresh the landing data so sparkline counts update
+            setTimeout(() => {
+                loadLanding();
+                // Re-expand the same project so the wizard re-renders with updated state
+                setTimeout(() => expandProject(projectId), 400);
+            }, 800);
+        } else {
+            const errMsg = result.detail || result.message || 'Upload failed — check CSV format.';
+            setStatus(`✗ ${errMsg}`, 'error');
+        }
+    } catch (err) {
+        console.error(`${label} upload error:`, err);
+        setStatus('Network error. Please try again.', 'error');
+    }
+};
 
 // ==========================================
 // NEW PROJECT MODAL (preserved)
