@@ -9,39 +9,148 @@ from botocore.exceptions import ClientError
 # Load the variables from the .env file
 load_dotenv()
 
-# Securely grab OpenAI configuration
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-MODEL_ID = os.getenv("OPENAI_MODEL_ID", "gpt-4o-mini")
+# =========================================================================
+# MULTI-PROVIDER AI ENGINE (OpenAI + AWS Bedrock)
+# Switch at runtime via: POST /api/admin/ai-provider
+# =========================================================================
 
-# SAFELY initialize the OpenAI client
+# --- Provider Configuration ---
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+OPENAI_MODEL_ID = os.getenv("OPENAI_MODEL_ID", "gpt-4o-mini")
+
+AWS_BEDROCK_REGION = os.getenv("AWS_BEDROCK_REGION", "us-east-1")
+AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")
+AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
+BEDROCK_MODEL_ID = os.getenv("BEDROCK_MODEL_ID", "anthropic.claude-3-5-sonnet-20241022-v2:0")
+
+# --- Active Provider State (mutable at runtime) ---
+# Options: "openai" | "bedrock"
+_active_provider = os.getenv("AI_PROVIDER", "bedrock").lower()
+
+
+def get_active_provider() -> str:
+    """Returns the currently active AI provider name."""
+    return _active_provider
+
+
+def set_active_provider(provider: str) -> str:
+    """Switch the active AI provider at runtime. Returns the new active provider."""
+    global _active_provider
+    provider = provider.strip().lower()
+    if provider not in ("openai", "bedrock"):
+        raise ValueError(f"Invalid provider '{provider}'. Must be 'openai' or 'bedrock'.")
+    _active_provider = provider
+    print(f"[AI] Provider switched to: {_active_provider.upper()}")
+    return _active_provider
+
+
+# --- Initialize OpenAI Client ---
+openai_client = None
 try:
     if OPENAI_API_KEY:
-        client = OpenAI(api_key=OPENAI_API_KEY)
+        openai_client = OpenAI(api_key=OPENAI_API_KEY)
+        print("[AI] OpenAI client initialized.")
     else:
-        client = None
-        print("⚠️ WARNING: OPENAI_API_KEY not found in environment. AI Agents are offline.")
+        print("[AI] WARNING: OPENAI_API_KEY not found. OpenAI provider unavailable.")
 except Exception as e:
-    client = None
-    print(f"⚠️ WARNING: OpenAI initialization failed. AI Agents are offline. Error: {e}")
+    print(f"[AI] WARNING: OpenAI initialization failed: {e}")
+
+# --- Initialize AWS Bedrock Client ---
+bedrock_client = None
+try:
+    if AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY:
+        bedrock_client = boto3.client(
+            "bedrock-runtime",
+            region_name=AWS_BEDROCK_REGION,
+            aws_access_key_id=AWS_ACCESS_KEY_ID,
+            aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
+                )
+        print(f"[AI] AWS Bedrock client initialized (region: {AWS_BEDROCK_REGION}, model: {BEDROCK_MODEL_ID}).")
+    else:
+        print("[AI] WARNING: AWS credentials not found. Bedrock provider unavailable.")
+except Exception as e:
+    print(f"[AI] WARNING: AWS Bedrock initialization failed: {e}")
+
+# --- Unified client reference (for backward-compat "if not client" checks) ---
+# This is True if ANY provider is available
+client = openai_client or bedrock_client
+
+
+# =========================================================================
+# PROVIDER INVOCATION FUNCTIONS
+# =========================================================================
 
 def _invoke_openai(system_prompt: str, user_prompt: str, temperature: float = 0.3) -> str:
-    """Helper function to securely call OpenAI's Chat API."""
-    if not client:
-        raise Exception("OpenAI client is offline. Check API Key.")
-        
+    """Call OpenAI's Chat Completion API."""
+    if not openai_client:
+        raise Exception("OpenAI client is not initialized. Check OPENAI_API_KEY.")
+
+    response = openai_client.chat.completions.create(
+        model=OPENAI_MODEL_ID,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ],
+        temperature=temperature
+    )
+    return response.choices[0].message.content.strip()
+
+
+def _invoke_bedrock(system_prompt: str, user_prompt: str, temperature: float = 0.3) -> str:
+    """Call AWS Bedrock (Anthropic Claude) via the Converse API."""
+    if not bedrock_client:
+        raise Exception("Bedrock client is not initialized. Check AWS credentials.")
+
+    response = bedrock_client.converse(
+        modelId=BEDROCK_MODEL_ID,
+        messages=[
+            {
+                "role": "user",
+                "content": [{"text": user_prompt}]
+            }
+        ],
+        system=[{"text": system_prompt}],
+        inferenceConfig={
+            "temperature": temperature,
+            "maxTokens": 4096,
+        },
+    )
+    # Extract text from Converse API response
+    output_message = response["output"]["message"]
+    result_text = ""
+    for block in output_message["content"]:
+        if "text" in block:
+            result_text += block["text"]
+    return result_text.strip()
+
+
+def _invoke_llm(system_prompt: str, user_prompt: str, temperature: float = 0.3) -> str:
+    """Unified LLM invocation - routes to the active provider with automatic fallback."""
+    primary = _active_provider
+    fallback = "openai" if primary == "bedrock" else "bedrock"
+
+    # Try primary provider
     try:
-        response = client.chat.completions.create(
-            model=MODEL_ID,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ],
-            temperature=temperature
+        if primary == "openai":
+            return _invoke_openai(system_prompt, user_prompt, temperature)
+        else:
+                        return _invoke_bedrock(system_prompt, user_prompt, temperature)
+    except Exception as primary_err:
+        print(f"[AI] Primary provider [{primary.upper()}] failed: {primary_err}")
+        print(f"[AI] Attempting fallback to [{fallback.upper()}]...")
+
+    # Try fallback provider
+    try:
+        if fallback == "openai":
+            return _invoke_openai(system_prompt, user_prompt, temperature)
+        else:
+            return _invoke_bedrock(system_prompt, user_prompt, temperature)
+    except Exception as fallback_err:
+        print(f"[AI] Fallback provider [{fallback.upper()}] also failed: {fallback_err}")
+        raise Exception(
+            f"All AI providers failed. Primary [{primary}]: {primary_err} | "
+            f"Fallback [{fallback}]: {fallback_err}"
         )
-        return response.choices[0].message.content.strip()
-    except Exception as e:
-        print(f"OpenAI API Error: {e}")
-        raise e
 
 # -------------------------------------------------------------------------
 # AI AGENT FUNCTIONS
@@ -70,14 +179,14 @@ def generate_blocker_summary(touchpoint_name: str, team_name: str, history_logs:
     2. Be direct and professional.
     3. Identify exactly what the {team_name} needs to do next to unblock the '{touchpoint_name}' integration.
     4. Do not use greetings or fluff. Just state the status and the required action.
-    """
+        """
     
     user_prompt = f"Timeline Logs:\n{timeline_text}"
 
     try:
-        return _invoke_openai(system_prompt, user_prompt, temperature=0.3)
+        return _invoke_llm(system_prompt, user_prompt, temperature=0.3)
     except Exception as e:
-        print(f"AI Agent Summarization Failed via OpenAI: {e}")
+        print(f"AI Agent Summarization Failed: {e}")
         return "Please review the detailed logs below for the latest status."
 
 
@@ -101,14 +210,14 @@ def generate_stakeholder_intro(team_name: str, team_items: list) -> str:
     4. Do not list the items out with bullet points. Just provide the narrative summary.
     5. Do not include greetings or sign-offs.
     6. Format your response with basic HTML paragraph tags (<p>text</p>).
-    """
+        """
 
     user_prompt = f"Data Provided:\n{context_text}"
 
     try:
-        return _invoke_openai(system_prompt, user_prompt, temperature=0.4)
+        return _invoke_llm(system_prompt, user_prompt, temperature=0.4)
     except Exception as e:
-        print(f"Executive Summary Generation Failed via OpenAI: {e}")
+        print(f"Executive Summary Generation Failed: {e}")
         return f"<p>Please review the {len(team_items)} pending items below requiring your sign-off to unblock the current project phase.</p>"
 
 
@@ -130,14 +239,14 @@ def generate_project_mom(project_data: str) -> str:
     - Tone: Formal, objective, and C-Suite ready.
     - Do NOT invent data. If no data exists, state "No significant updates."
     - Output ONLY the HTML content. Do not include markdown code blocks (```html) or outer <html>/<body> tags.
-    """
+        """
 
     user_prompt = f"Raw Project Data:\n{project_data}"
 
     try:
-        return _invoke_openai(system_prompt, user_prompt, temperature=0.3)
+        return _invoke_llm(system_prompt, user_prompt, temperature=0.3)
     except Exception as e:
-        print(f"MOM Generation Failed via OpenAI: {e}")
+        print(f"MOM Generation Failed: {e}")
         return "<p>Error generating MOM. Please review the dashboard manually.</p>"
 
 
@@ -177,19 +286,19 @@ def generate_wud_content(api_name: str, module_name: str, crm_location: str, bus
     - Bullet 2 MUST be exactly: "In Failure Scenario, If Invalid Response is passed it will display respective error messages in response."
 
     Do not include markdown code blocks (like ```json). Return ONLY the raw, valid JSON object.
-    """
+        """
 
     user_prompt = f"API Name: {api_name}\nModule: {module_name}\nTrigger Location in CRM: {crm_location}\nBusiness Flow / Objective: {business_flow}\n\nInput Details:\n{input_req}\n\nOutput Details:\n{output_res}"
 
     try:
-        response_text = _invoke_openai(system_prompt, user_prompt, temperature=0.2)
+        response_text = _invoke_llm(system_prompt, user_prompt, temperature=0.2)
 
         # Strip accidental markdown formatting the LLM might have added
         clean_json = re.sub(r'```json|```', '', response_text).strip()
         return json.loads(clean_json)
 
     except Exception as e:
-        print(f"WUD Content Generation Failed via OpenAI: {e}")
+        print(f"WUD Content Generation Failed: {e}")
         return {
             "introduction": f"The '{api_name}' integration facilitates seamless data transfer.",
             "macro_logic": "• Error: Could not generate logic.\n• Please check API.",
@@ -274,13 +383,13 @@ def generate_touchpoint_mom(
         f"Module: {module}\n\n"
         f"Discussions:\n{discussions_text if discussions_text else 'None recorded.'}\n\n"
                 f"Action Items:\n{actions_text if actions_text else 'None recorded.'}\n\n"
-        f"Open Pointers: {open_pointers or 'None.'}"
+                f"Open Pointers: {open_pointers or 'None.'}"
     )
 
     try:
-        return _invoke_openai(system_prompt, user_prompt, temperature=0.3)
+        return _invoke_llm(system_prompt, user_prompt, temperature=0.3)
     except Exception as e:
-        print(f"Touchpoint MoM Generation Failed via OpenAI: {e}")
+        print(f"Touchpoint MoM Generation Failed: {e}")
         return fallback_html
 
 def generate_eds_request_template(payload: str) -> str:
@@ -293,40 +402,129 @@ def generate_eds_request_template(payload: str) -> str:
     Rule 1: Keep the exact structural integrity of the original payload.
     Rule 2: Replace all literal values with dynamic placeholders in the format ##KEY_NAME_UPPERCASE##.
     Rule 3: Return ONLY the raw template string. Do not include markdown code blocks (like ```json).
-    """
+        """
     
     try:
-        return _invoke_openai(system_prompt, f"Payload:\n{payload}", temperature=0.1).strip()
+        return _invoke_llm(system_prompt, f"Payload:\n{payload}", temperature=0.1).strip()
     except Exception as e:
         print(f"EDS Template Gen Failed: {e}")
         return f"Error generating template: {e}"
 
-def generate_eds_xslt_config(success_payload: str, error_payload: str) -> dict:
-    """Generates robust XSLT handling both success/error and extracts output parameters."""
-    if not client:
-        return {"xslt": "", "parameters": ["Error"]}
+def _extract_output_params_from_xslt(xslt_str: str) -> list:
+    """Deterministically extract output parameter names from generated XSLT.
 
-    system_prompt = """
-    You are an expert XSLT developer. Generate an XSLT 1.0 script to transform the provided JSON/XML inputs into a unified <Response> XML structure.
-    Rule 1: The XSLT must handle both the Success payload and the Failure payload gracefully (using <xsl:choose>).
-    Rule 2: Output balanced XML tags in both scenarios (if it's a failure, success tags should still render but be empty, and vice versa).
-    Rule 3: Extract the final output XML node names into a list of strings.
-    Rule 4: Output strictly as a JSON object with exactly two keys: "xslt" (a string containing the raw XSLT code) and "parameters" (a list of strings representing the output tag names).
-    Do not include markdown code blocks (like ```json). Return ONLY the raw JSON object.
+    Finds all XML element tags that contain an <xsl:value-of select="..."/>
+    child. These are the actual output field names for MASHUPDATASOURCEFIELD.
+
+    Excludes structural/wrapper tags like 'response', 'xsl:template',
+    'xsl:stylesheet', etc.
+
+    Example XSLT fragment:
+        <Status><xsl:value-of select="status"/></Status>
+    Extracts: "Status"
     """
-    
-    user_prompt = f"Success Payload:\n{success_payload}\n\nFailure Payload:\n{error_payload}"
-    
+    # Pattern: <TagName> followed (possibly with whitespace) by <xsl:value-of
+    # This catches both single-line and multi-line variants
+    pattern = r'<([A-Za-z][A-Za-z0-9_]*)>\s*<xsl:value-of\s+select='
+    matches = re.findall(pattern, xslt_str)
+
+    # Exclude structural/wrapper tags
+    excluded = {
+        'response', 'root', 'template', 'stylesheet',
+        'xsl:template', 'xsl:stylesheet', 'xsl:output',
+        'output', 'transform'
+    }
+
+    seen = set()
+    params = []
+    for tag in matches:
+        tag_lower = tag.lower()
+        if tag_lower not in excluded and tag not in seen:
+            seen.add(tag)
+            params.append(tag)
+
+    return params
+
+
+def generate_eds_xslt_config(success_payload: str, error_payload: str) -> dict:
+    """Generates XSLT for the success response and extracts output parameters.
+
+    Strategy:
+    1. AI generates a clean XSLT 1.0 stylesheet that maps the success
+       payload fields into PascalCase XML tags under <response>.
+    2. Output parameters are extracted DETERMINISTICALLY by parsing the
+       generated XSLT for element tags containing <xsl:value-of>.
+       This is more reliable than asking the AI to list them separately.
+
+    Returns:
+        {"xslt": str, "parameters": [str, ...]}
+    """
+    if not client:
+        return {"xslt": "", "parameters": []}
+
+    system_prompt = """You are an expert XSLT 1.0 developer for a CRM integration platform.
+
+Your task: Generate a clean XSLT 1.0 stylesheet that transforms the provided API success response into a flat XML structure.
+
+Rules:
+1. The XSLT must match on template match="/root" (the CRM engine wraps JSON responses in a <root> element before applying XSLT).
+2. Create a single <response> wrapper element inside the template.
+3. For EACH field in the success payload, create an XML element with a PascalCase tag name and use <xsl:value-of select="originalFieldName"/> to map the value.
+   - Example: JSON field "responseCode" → <ResponseCode><xsl:value-of select="responseCode"/></ResponseCode>
+   - Example: JSON field "status" → <Status><xsl:value-of select="status"/></Status>
+   - Example: JSON field "cifNumber" → <CIFNumber><xsl:value-of select="cifNumber"/></CIFNumber>
+4. Maintain the same order of fields as they appear in the input payload.
+5. Do NOT add error handling logic, xsl:choose, or conditional branches. Only map the success scenario fields.
+6. Use standard XSLT 1.0 boilerplate: xml declaration, xsl:stylesheet with version="1.0" and xmlns:xsl, xsl:output method="xml" indent="yes".
+7. Return ONLY the raw XSLT code. Do not wrap in markdown code blocks. Do not add any explanation text.
+
+Example — if the input is:
+{"status": "SUCCESS", "responseCode": "00", "cifNumber": "CIF000987654"}
+
+You output:
+<?xml version="1.0" encoding="UTF-8"?>
+<xsl:stylesheet version="1.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform">
+<xsl:output method="xml" indent="yes"/>
+<xsl:template match="/root">
+<response>
+<Status><xsl:value-of select="status"/></Status>
+<ResponseCode><xsl:value-of select="responseCode"/></ResponseCode>
+<CIFNumber><xsl:value-of select="cifNumber"/></CIFNumber>
+</response>
+</xsl:template>
+</xsl:stylesheet>"""
+
+    user_prompt = f"Success Response Payload:\n{success_payload}"
+
     try:
-        response_text = _invoke_openai(system_prompt, user_prompt, temperature=0.1)
-        clean_json = re.sub(r'```json|```', '', response_text).strip()
-        return json.loads(clean_json)
+        xslt_str = _invoke_llm(system_prompt, user_prompt, temperature=0.1).strip()
+
+        # Strip any accidental markdown fences
+        xslt_str = re.sub(r'^```(?:xml|xslt)?\s*', '', xslt_str)
+        xslt_str = re.sub(r'\s*```$', '', xslt_str)
+        xslt_str = xslt_str.strip()
+
+        # Deterministically extract output parameters from the XSLT
+        parameters = _extract_output_params_from_xslt(xslt_str)
+
+        # Fallback: if regex extraction failed, try to parse field names
+        # from the success payload directly (PascalCase conversion)
+        if not parameters and success_payload:
+            try:
+                payload_obj = json.loads(success_payload)
+                if isinstance(payload_obj, dict):
+                    for key in payload_obj.keys():
+                        # Convert camelCase to PascalCase
+                        pascal = key[0].upper() + key[1:] if key else key
+                        parameters.append(pascal)
+            except (json.JSONDecodeError, Exception):
+                pass
+
+        return {"xslt": xslt_str, "parameters": parameters}
+
     except Exception as e:
         print(f"EDS XSLT Gen Failed: {e}")
-        return {
-            "xslt": f"", 
-            "parameters": []
-        }
+        return {"xslt": "", "parameters": []}
 
 
 

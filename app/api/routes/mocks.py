@@ -9,6 +9,8 @@ from app.models.domain import MockService
 
 router = APIRouter()
 
+MOCK_BASE_URL = "http://127.0.0.1:8000/mock-api"
+
 
 @router.post("/api/mocks/create")
 def create_mock(request_body: dict, db: Session = Depends(get_db)):
@@ -51,8 +53,8 @@ def create_mock(request_body: dict, db: Session = Depends(get_db)):
             raise HTTPException(
                 status_code=400,
                 detail="Another mock with this method name already exists. Kindly change method name."
-            )
-        mock_url = f"/mock-api/{existing_for_tp.method_name}"
+                        )
+        mock_url = f"{MOCK_BASE_URL}/{existing_for_tp.method_name}"
         print(f"[{datetime.now()}] Mock updated: {http_method} {mock_url} -> {status_code}")
         return {
             "status": "success",
@@ -93,9 +95,9 @@ def create_mock(request_body: dict, db: Session = Depends(get_db)):
         raise HTTPException(
             status_code=400,
             detail="Mock with same method name already exists. Kindly change method name."
-        )
+                )
 
-    mock_url = f"/mock-api/{new_mock.method_name}"
+    mock_url = f"{MOCK_BASE_URL}/{new_mock.method_name}"
     print(f"[{datetime.now()}] Mock created: {http_method} {mock_url} -> {status_code}")
 
     return {
@@ -118,8 +120,8 @@ def list_mocks(db: Session = Depends(get_db)):
                 "method_name": m.method_name,
                 "http_method": m.http_method,
                 "status_code": m.status_code,
-                "content_type": m.content_type,
-                "mock_url": f"/mock-api/{m.method_name}",
+                                "content_type": m.content_type,
+                "mock_url": f"{MOCK_BASE_URL}/{m.method_name}",
                 "touchpoint_id": m.touchpoint_id,
                 "created_by": m.created_by,
                 "created_at": m.created_at.isoformat() if m.created_at else None
@@ -149,8 +151,8 @@ def get_mock_by_touchpoint(tp_id: int, db: Session = Depends(get_db)):
             "http_method": m.http_method,
             "status_code": m.status_code,
             "content_type": m.content_type,
-            "payload": m.payload,
-            "mock_url": f"/mock-api/{m.method_name}",
+                        "payload": m.payload,
+            "mock_url": f"{MOCK_BASE_URL}/{m.method_name}",
             "created_by": m.created_by,
             "created_at": m.created_at.isoformat() if m.created_at else None
         }

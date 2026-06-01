@@ -18,6 +18,7 @@ Why PostgreSQL-based lookup (not Oracle DESCRIPTION search):
 """
 
 import os
+import re
 import oracledb
 from fastapi import APIRouter, Depends, HTTPException, Body
 from sqlalchemy.orm import Session
@@ -35,6 +36,7 @@ OWNER_ID = 914
 ITEM_ID = 1
 DS_ITEM_ID = 2  # MashupIdList ITEMID for DATASOURCEID (separate from CONNECTIONID)
 FIELD_ITEM_ID = 3  # MashupIdList ITEMID for FIELDID (MASHUPDATASOURCEFIELD, separate counter)
+MOCK_SERVICE_LOCATION = "http://127.0.0.1:8000/mock-api"
 
 
 def _get_tp_data(tp_id: int, db: Session):
@@ -164,6 +166,78 @@ def _ds_row_exists(cursor, schema, datasource_id: int) -> bool:
         {"owner": OWNER_ID, "dsid": datasource_id}
     )
     return cursor.fetchone() is not None
+
+
+def _build_template_properties(template_str: str) -> str:
+    """Extract ##FIELD## placeholders from the request template and build
+    the CRM templateproperties XML.
+
+    Args:
+        template_str: the dynamic request template
+            (e.g. '{"send_to": "##SEND_TO##", ...}')
+
+    Returns:
+        str - the <templateproperties>...</templateproperties> XML block,
+        or an empty block if no fields found.
+    """
+    fields = re.findall(r'##(\w+)##', template_str)
+    seen = set()
+    unique_fields = []
+    for f in fields:
+        f_lower = f.lower()
+        if f_lower not in seen:
+            seen.add(f_lower)
+            unique_fields.append(f_lower)
+
+    field_elements = ""
+    for name in unique_fields:
+        field_elements += (
+            f'\t\t<field name="{name}" type="String" regx="" '
+            f'errormessage="" label="" inputmode="0" '
+            f'ismandatory="false" isconvertbase64="false" '
+            f'contentname="" contenttype="" '
+            f'useEncryption="false" '
+            f'disableFieldLogging="false" '
+            f'dateRangeInDays="0" toFieldName="" '
+            f'filterDisplayMode="0" arraytemplateid="0" '
+            f'arraytemplatename="" resolverID="" '
+            f'resolverName="" maskFormatID="" '
+            f'maskFormatName="" fieldValidation=\'\'/>\n'
+        )
+
+        template_properties = (
+        f"<templateproperties>\n"
+        f"\t<fields>\n{field_elements}\t</fields>\n"
+        f"</templateproperties>"
+    )
+    return template_properties
+
+
+def _build_mapping_xml(unique_fields: list) -> str:
+    """Build the MASHUPPARAMMAPPING MAPPINGXML from the deduplicated
+    list of template field names.
+
+    Args:
+        unique_fields: list of lowercased field names in order
+            (e.g. ['send_to', 'template_id', 'buttonurlparam'])
+
+    Returns:
+        str - the <mappings>...</mappings> XML block,
+        or an empty block if no fields.
+    """
+    mapping_elements = ""
+    for idx, name in enumerate(unique_fields, start=1):
+        mapping_elements += (
+            f"<mapping parametername='{name}' "
+            f"mappedcolumn='InputParam{idx}' />\n"
+        )
+
+    mapping_xml = (
+        f"<mappings>\n"
+        f"{mapping_elements}"
+        f"</mappings>"
+    )
+    return mapping_xml
 
 
 def _verify_oracle_row_exists(cursor, schema, connection_id):
@@ -583,20 +657,14 @@ def crm_mashupws_preview(tp_id: int, db: Session = Depends(get_db)):
     if not api_name:
         raise HTTPException(
             status_code=400,
-            detail="API Name is empty. Fill in the API Name field first."
+                        detail="API Name is empty. Fill in the API Name field first."
         )
 
-    # Validate: uatUrl
+    # Use mock service location for SERVICELOCATION
+    service_location = MOCK_SERVICE_LOCATION
+
+    # Get technical details for headers
     td = tech.technical_details if (tech and isinstance(tech.technical_details, dict)) else {}
-    service_location = (td.get("uatUrl") or "").strip()
-    if not service_location:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "UAT URL is required. Fill in the UAT URL in "
-                "Connectivity tab before pushing WS connection."
-            )
-        )
 
     # Generate headers XML via AI
     mandatory_headers = (td.get("mandatoryHeaders") or "").strip()
@@ -680,17 +748,11 @@ def crm_mashupws_insert(tp_id: int, db: Session = Depends(get_db)):
             detail="API Name is empty. Fill in the API Name field first."
         )
 
-    # Validate: uatUrl
+    # Use mock service location for SERVICELOCATION
+    service_location = MOCK_SERVICE_LOCATION
+
+    # Get technical details for headers
     td = tech.technical_details if (tech and isinstance(tech.technical_details, dict)) else {}
-    service_location = (td.get("uatUrl") or "").strip()
-    if not service_location:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "UAT URL is required. Fill in the UAT URL in "
-                "Connectivity tab before pushing WS connection."
-            )
-        )
 
     # Generate headers XML via AI
     mandatory_headers = (td.get("mandatoryHeaders") or "").strip()
@@ -808,6 +870,7 @@ def crm_datasource_insert(
     xslt = (payload.get("xslt") or "").strip()
     data_xpath = (payload.get("data_xpath") or "response").strip()
     output_fields = payload.get("output_fields") or []
+    request_template = (payload.get("request_template") or "")
 
     if not name:
         raise HTTPException(status_code=400, detail="Touchpoint name is required.")
@@ -847,6 +910,19 @@ def crm_datasource_insert(
                 # Delete ALL child field rows first (will re-insert with same FIELDIDs)
                 cursor.execute(
                     f"DELETE FROM {schema}.MASHUPDATASOURCEFIELD "
+                    f"WHERE OWNERID = :owner AND DATASOURCEID = :dsid",
+                    {"owner": OWNER_ID, "dsid": datasource_id}
+                )
+                                # Delete MASHUPQUERYPARAMETER row (child of datasource)
+                cursor.execute(
+                    f"DELETE FROM {schema}.MASHUPQUERYPARAMETER "
+                    f"WHERE OWNERID = :owner AND DATASOURCEID = :dsid "
+                    f"AND NAME = 'Request'",
+                    {"owner": OWNER_ID, "dsid": datasource_id}
+                )
+                # Delete MASHUPPARAMMAPPING row(s) (child of datasource)
+                cursor.execute(
+                    f"DELETE FROM {schema}.MASHUPPARAMMAPPING "
                     f"WHERE OWNERID = :owner AND DATASOURCEID = :dsid",
                     {"owner": OWNER_ID, "dsid": datasource_id}
                 )
@@ -982,7 +1058,7 @@ def crm_datasource_insert(
                     -1, -1, '*',
                     0, -1, -1,
                     0, 0, -1,
-                    '{"MongoOutputFieldMode":3}'
+                    '{{"MongoOutputFieldMode":3}}'
                 )""",
                 {
                     "ownerid": OWNER_ID,
@@ -994,6 +1070,58 @@ def crm_datasource_insert(
                 }
             )
             fields_created += 1
+
+        # INSERT MASHUPQUERYPARAMETER row (one per datasource)
+        template_properties_xml = _build_template_properties(request_template)
+        cursor.execute(
+            f"""INSERT INTO {schema}.MASHUPQUERYPARAMETER (
+                OWNERID, DATASOURCEID, NAME, TYPE,
+                ISMANDATORY, ADDEDBY, ADDEDON,
+                DISPLAYNAME, TEMPLATE,
+                ISCOLLECTION, ISENUM, ISHEADERPROPERTY,
+                TEMPLATEPROPERTIES,
+                ARRAYTEMPLATEID, PARENTID
+            ) VALUES (
+                :ownerid, :datasourceid, 'Request', 'String',
+                0, '1', SYSDATE,
+                'Request', :template,
+                0, 0, 0,
+                :template_properties,
+                0, 0
+            )""",
+            {
+                "ownerid": OWNER_ID,
+                "datasourceid": datasource_id,
+                "template": request_template,
+                "template_properties": template_properties_xml,
+            }
+                )
+
+        # Count template fields for response
+        template_fields = re.findall(r'##(\w+)##', request_template)
+        seen_template = set()
+        unique_template_fields = []
+        for tf in template_fields:
+            tf_lower = tf.lower()
+            if tf_lower not in seen_template:
+                seen_template.add(tf_lower)
+                unique_template_fields.append(tf_lower)
+
+        # INSERT MASHUPPARAMMAPPING row (one per datasource)
+        # MAPPINGID is auto-generated by Oracle trigger from sequence
+        mapping_xml = _build_mapping_xml(unique_template_fields)
+        cursor.execute(
+            f"""INSERT INTO {schema}.MASHUPPARAMMAPPING (
+                OWNERID, DATASOURCEID, CREATEDBY, CREATEDON, MAPPINGXML
+            ) VALUES (
+                :ownerid, :datasourceid, 1, SYSDATE, :mapping_xml
+            )""",
+            {
+                "ownerid": OWNER_ID,
+                "datasourceid": datasource_id,
+                "mapping_xml": mapping_xml,
+            }
+        )
 
         conn.commit()
 
@@ -1021,13 +1149,17 @@ def crm_datasource_insert(
             "connection_id": stored_cid,
             "fields_created": fields_created,
             "fields_reused": fields_reused,
-            "fields_new": new_fields,
+                        "fields_new": new_fields,
+            "query_param_created": True,
+            "param_mapping_created": True,
+            "template_fields_count": len(unique_template_fields),
             "is_update": is_update,
             "message": (
                 f"MASHUPDATASOURCE {'updated' if is_update else 'created'} "
                 f"successfully. DATASOURCEID = {datasource_id}, "
                 f"{fields_created} fields mapped "
-                f"({fields_reused} reused, {new_fields} new)."
+                f"({fields_reused} reused, {new_fields} new), "
+                f"{len(unique_template_fields)} input params."
             )
         }
 

@@ -159,7 +159,7 @@ class EdsTemplateRequest(BaseModel):
 
 class EdsXsltRequest(BaseModel):
     success_payload: str
-    error_payload: str
+    error_payload: str = ""  # Kept for backward compat; XSLT now only maps success scenario
 
 # --- NEW Routes for EDS Generation ---
 @router.post("/api/integrations/eds/generate-template")

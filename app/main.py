@@ -13,6 +13,7 @@ from app.core.database import engine, Base, SessionLocal, get_db
 from app.models.domain import TeamMaster, DepartmentMaster
 from app.services.identity_validator import enrich_owner_label
 from app.core.mom_engine import generate_and_send_mom
+from app.core.ai_agent import get_active_provider, set_active_provider
 from app.models.domain import IntegrationTouchpoint, IDRFunctional, IDRTechnical, IDRActionLog, TechnicalDocument
 # Import our new architecture
 from app.api.routes import upload, projects, tasks, integrations, mom, followups, mocks
@@ -459,6 +460,30 @@ def test_mom_pointer_nudges_endpoint():
     """Manual trigger for MoM-pointer nudges (testing only)."""
     send_mom_pointer_nudges()
     return {"status": "triggered"}
+
+
+# =========================================================================
+# AI PROVIDER RUNTIME SWITCHING
+# =========================================================================
+
+@app.get("/api/admin/ai-provider")
+def get_ai_provider():
+    """Returns the currently active AI provider."""
+    return {"status": "success", "active_provider": get_active_provider()}
+
+
+@app.post("/api/admin/ai-provider")
+def switch_ai_provider(provider: str = Body(..., embed=True)):
+    """Switch AI provider at runtime. Body: {"provider": "openai" | "bedrock"}"""
+    try:
+        new_provider = set_active_provider(provider)
+        return {
+            "status": "success",
+            "message": f"AI provider switched to: {new_provider.upper()}",
+            "active_provider": new_provider
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 # 1. Serve the new HTML Page

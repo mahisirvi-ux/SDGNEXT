@@ -501,13 +501,14 @@ function openGenerateMockModal() {
 
     const td = tp.techDetails || {};
 
-    // Pre-fill method_name from apiName, slugified
+        // Pre-fill method_name from endpointUrl or apiName
+    const endpointUrl = (td.endpointUrl || "").trim();
     const apiName = (td.apiName || tp.name || "").trim();
-    const slug = apiName
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-+|-+$/g, "");
-    document.getElementById('mock-method-name').value = slug;
+    // Use endpoint URL as method name (strip leading slashes), fallback to apiName
+    const methodName = endpointUrl
+        ? endpointUrl.replace(/^\/+/, '')
+        : apiName;
+    document.getElementById('mock-method-name').value = methodName;
 
     // Pre-fill HTTP method from apiMethod, default POST
     const httpMethod = (td.apiMethod || "POST").toUpperCase();
@@ -615,12 +616,11 @@ async function submitMockCreate() {
 }
 
 function showMockSuccess(mockUrl, httpMethod, isUpdate) {
-    // mockUrl from API is relative like /mock-api/customer-details
-    const absUrl = window.location.origin + mockUrl;
-    document.getElementById('mock-success-url').textContent = absUrl;
+    // mockUrl from API is now absolute like http://127.0.0.1:8000/mock-api/customer-details
+    document.getElementById('mock-success-url').textContent = mockUrl;
 
     const testLink = document.getElementById('mock-success-test-link');
-    testLink.href = absUrl;
+    testLink.href = mockUrl;
     testLink.style.display = '';
 
     // Show method badge (metadata: what the real API expects)
@@ -669,9 +669,9 @@ async function loadMockInfo(tpId) {
         const resp = await fetch(`/api/mocks/by-touchpoint/${tpId}`);
         const data = await resp.json();
 
-        if (data.status === 'success' && data.mock) {
+                if (data.status === 'success' && data.mock) {
             const m = data.mock;
-            const absUrl = window.location.origin + m.mock_url;
+            const absUrl = m.mock_url;
             container.innerHTML = `
                 <div class="bg-emerald-50 border border-emerald-200 rounded-lg p-3 mt-4">
                     <div class="flex items-center gap-2 mb-2">
@@ -1119,12 +1119,13 @@ async function finishEdsConfiguration() {
             {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({
+                body: JSON.stringify({
                     name: name,
                     source: source,
                     xslt: xslt,
                     data_xpath: dataXpath,
-                    output_fields: edsOutputFields
+                    output_fields: edsOutputFields,
+                    request_template: document.getElementById('eds-template').value || ""
                 })
             }
         );
@@ -1134,17 +1135,18 @@ async function finishEdsConfiguration() {
             throw new Error(
                 data.detail || data.message ||
                 "MASHUPDATASOURCE insert failed."
-            );
+                        );
         }
 
         const action = data.is_update ? "updated" : "created";
 
-                // Success state
+        // Success state
         const fieldsCount = data.fields_created || 0;
+        const templateFieldsCount = data.template_fields_count || 0;
         statusText.className = "text-xs text-emerald-600 font-bold italic";
         statusText.innerText =
             `\u2713 Datasource ${action} (ID: ${data.datasource_id}), ` +
-            `${fieldsCount} fields mapped`;
+            `${fieldsCount} fields + ${templateFieldsCount} input params mapped`;
         nextBtn.innerText = "Done \u2713";
 
         // Auto-close after 2 seconds
