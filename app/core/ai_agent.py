@@ -2,6 +2,7 @@ import os
 import json
 import re
 import boto3
+import xml.etree.ElementTree as ET
 from openai import OpenAI
 from dotenv import load_dotenv
 from botocore.exceptions import ClientError
@@ -447,77 +448,98 @@ def _extract_output_params_from_xslt(xslt_str: str) -> list:
 
 
 def generate_eds_xslt_config(success_payload: str, error_payload: str) -> dict:
-    """Generates XSLT for the success response and extracts output parameters.
+    """Generates XSLT for the success and error responses and extracts output parameters.
 
     Strategy:
-    1. AI generates a clean XSLT 1.0 stylesheet that maps the success
-       payload fields into PascalCase XML tags under <response>.
-    2. Output parameters are extracted DETERMINISTICALLY by parsing the
-       generated XSLT for element tags containing <xsl:value-of>.
-       This is more reliable than asking the AI to list them separately.
+    1. AI generates a clean XSLT 1.0 stylesheet handling both success and failure using <xsl:choose>.
+    2. Dynamic Root Matching: It detects if the input is JSON (uses match="/root") or XML (uses match="/*").
+    3. It balances the XML tags: ALL unique fields from BOTH payloads will be represented.
+    4. Output parameters are extracted DETERMINISTICALLY by parsing the generated XSLT.
 
     Returns:
         {"xslt": str, "parameters": [str, ...]}
     """
-    if not client:
+    if not client: 
         return {"xslt": "", "parameters": []}
 
     system_prompt = """You are an expert XSLT 1.0 developer for a CRM integration platform.
 
-Your task: Generate a clean XSLT 1.0 stylesheet that transforms the provided API success response into a flat XML structure.
+Your task: Generate a clean XSLT 1.0 stylesheet that transforms the provided API responses (which could be JSON or XML) into a flat XML structure, handling BOTH success and failure scenarios.
 
 Rules:
-1. The XSLT must match on template match="/root" (the CRM engine wraps JSON responses in a <root> element before applying XSLT).
+1. Detect Input Format:
+   - If the payloads are JSON: The CRM engine wraps JSON responses in a <root> element, so you MUST use <xsl:template match="/root">.
+   - If the payloads are XML: Do NOT use match="/root". Instead, use <xsl:template match="/*"> to dynamically match the provided top-level XML element (e.g., <ApiResponse>).
 2. Create a single <response> wrapper element inside the template.
-3. For EACH field in the success payload, create an XML element with a PascalCase tag name and use <xsl:value-of select="originalFieldName"/> to map the value.
-   - Example: JSON field "responseCode" → <ResponseCode><xsl:value-of select="responseCode"/></ResponseCode>
-   - Example: JSON field "status" → <Status><xsl:value-of select="status"/></Status>
-   - Example: JSON field "cifNumber" → <CIFNumber><xsl:value-of select="cifNumber"/></CIFNumber>
-4. Maintain the same order of fields as they appear in the input payload.
-5. Do NOT add error handling logic, xsl:choose, or conditional branches. Only map the success scenario fields.
-6. Use standard XSLT 1.0 boilerplate: xml declaration, xsl:stylesheet with version="1.0" and xmlns:xsl, xsl:output method="xml" indent="yes".
-7. Return ONLY the raw XSLT code. Do not wrap in markdown code blocks. Do not add any explanation text.
+3. Identify a distinguishing field to check for success vs failure (e.g., status='SUCCESS' or Header/Status='SUCCESS') and use <xsl:choose>, <xsl:when test="...">, and <xsl:otherwise> to branch the logic. Evaluate the condition relative to the matched root element.
+4. CRITICAL "BALANCED TAGS" RULE: You must identify the UNION of all unique fields/elements from BOTH the Success and Error payloads. Convert these field names to PascalCase XML tags.
+5. In the <xsl:when> (Success) block:
+   - Map the success fields using <xsl:value-of select="relative/path/to/originalField"/>.
+   - For fields that ONLY exist in the error payload, output empty tags (e.g., <ErrorSpecificField></ErrorSpecificField>).
+6. In the <xsl:otherwise> (Error) block:
+   - Map the error fields using <xsl:value-of select="relative/path/to/originalField"/>.
+   - For fields that ONLY exist in the success payload, output empty tags (e.g., <SuccessSpecificField></SuccessSpecificField>).
+7. The order of tags inside the <xsl:when> and <xsl:otherwise> blocks MUST be exactly the same to ensure a consistent XML structure.
+8. Use standard XSLT 1.0 boilerplate: xml declaration, xsl:stylesheet with version="1.0" and xmlns:xsl, xsl:output method="xml" indent="yes".
+9. Return ONLY the raw XSLT code. Do not wrap in markdown code blocks. Do not add any explanation text.
+"""
 
-Example — if the input is:
-{"status": "SUCCESS", "responseCode": "00", "cifNumber": "CIF000987654"}
-
-You output:
-<?xml version="1.0" encoding="UTF-8"?>
-<xsl:stylesheet version="1.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform">
-<xsl:output method="xml" indent="yes"/>
-<xsl:template match="/root">
-<response>
-<Status><xsl:value-of select="status"/></Status>
-<ResponseCode><xsl:value-of select="responseCode"/></ResponseCode>
-<CIFNumber><xsl:value-of select="cifNumber"/></CIFNumber>
-</response>
-</xsl:template>
-</xsl:stylesheet>"""
-
-    user_prompt = f"Success Response Payload:\n{success_payload}"
+    user_prompt = f"Success Response Payload:\n{success_payload}\n\nError Response Payload:\n{error_payload}"
 
     try:
         xslt_str = _invoke_llm(system_prompt, user_prompt, temperature=0.1).strip()
 
-        # Strip any accidental markdown fences
-        xslt_str = re.sub(r'^```(?:xml|xslt)?\s*', '', xslt_str)
-        xslt_str = re.sub(r'\s*```$', '', xslt_str)
+        # Strip any accidental markdown fences generated by the LLM
+        # (Constructed dynamically to prevent UI markdown parser from breaking)
+        fence = '`' * 3
+        xslt_str = re.sub(r'^' + fence + r'(?:xml|xslt)?\s*', '', xslt_str)
+        xslt_str = re.sub(r'\s*' + fence + r'$', '', xslt_str)
         xslt_str = xslt_str.strip()
 
-        # Deterministically extract output parameters from the XSLT
-        parameters = _extract_output_params_from_xslt(xslt_str)
+        parameters = []
+        
+        # Deterministically extract output parameters from the XSLT using regex
+        try:
+            # Finds PascalCase tags containing xsl:value-of 
+            matches = re.findall(r'<([A-Z][a-zA-Z0-9_]*?)>\s*<xsl:value-of', xslt_str)
+            if matches:
+                # Use dict.fromkeys to remove duplicates while preserving exact order
+                parameters = list(dict.fromkeys(matches))
+        except Exception:
+            pass
 
-        # Fallback: if regex extraction failed, try to parse field names
-        # from the success payload directly (PascalCase conversion)
-        if not parameters and success_payload:
+        # Fallback: parse field names directly from BOTH payloads (Supports JSON & XML)
+        if not parameters and (success_payload or error_payload):
             try:
-                payload_obj = json.loads(success_payload)
-                if isinstance(payload_obj, dict):
-                    for key in payload_obj.keys():
-                        # Convert camelCase to PascalCase
-                        pascal = key[0].upper() + key[1:] if key else key
+                payload_keys = set()
+                for payload in [success_payload, error_payload]:
+                    if not payload:
+                        continue
+                    payload = payload.strip()
+                    
+                    if payload.startswith('{') or payload.startswith('['):
+                        # JSON Fallback
+                        obj = json.loads(payload)
+                        if isinstance(obj, dict):
+                            payload_keys.update(obj.keys())
+                    elif payload.startswith('<'):
+                        # XML Fallback
+                        try:
+                            root = ET.fromstring(payload)
+                            for elem in root.iter():
+                                if len(elem) == 0:  # If it's a leaf node
+                                    # Strip XML namespace if present
+                                    tag = elem.tag.split('}')[-1] if '}' in elem.tag else elem.tag
+                                    payload_keys.add(tag)
+                        except ET.ParseError:
+                            pass
+                
+                for key in payload_keys:
+                    # Convert to PascalCase
+                    pascal = key[0].upper() + key[1:] if key else key
+                    if pascal not in parameters:
                         parameters.append(pascal)
-            except (json.JSONDecodeError, Exception):
+            except Exception:
                 pass
 
         return {"xslt": xslt_str, "parameters": parameters}
@@ -525,7 +547,6 @@ You output:
     except Exception as e:
         print(f"EDS XSLT Gen Failed: {e}")
         return {"xslt": "", "parameters": []}
-
 
 
 def generate_crm_headers_xml(
