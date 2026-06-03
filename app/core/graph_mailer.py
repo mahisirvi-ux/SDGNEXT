@@ -373,13 +373,15 @@ def find_latest_in_conversation(subject_filter):
     return all_msgs[0].get("id")
 
 def reply_to_sent_message(original_message_id, html_body,
-                          to_recipients=None, cc_recipients=None):
+                          to_recipients=None, cc_recipients=None,
+                          attachments=None):
     """Send a reply that INCLUDES the quoted original content.
 
     Uses the createReply draft flow (needs Mail.ReadWrite):
       1. POST /messages/{id}/createReply  -> draft with quoted body
       2. PATCH /messages/{draft_id}       -> our HTML + the quote
-      3. POST /messages/{draft_id}/send
+      3. (optional) Add attachments to the draft
+      4. POST /messages/{draft_id}/send
 
     Returns {"success": bool, "error": str or None}.
     """
@@ -460,6 +462,27 @@ def reply_to_sent_message(original_message_id, html_body,
         return {"success": False,
                 "error": (f"draft PATCH failed "
                           f"({resp.status_code}): {resp.text[:300]}")}
+
+    # Step 2b: Add attachments to the draft (if any)
+    if attachments:
+        for att in attachments:
+            att_url = f"{base}/messages/{draft_id}/attachments"
+            att_payload = {
+                "@odata.type": "#microsoft.graph.fileAttachment",
+                "name": att["name"],
+                "contentType": att.get("contentType", "application/octet-stream"),
+                "contentBytes": att["contentBytes"],
+            }
+            try:
+                att_resp = requests.post(att_url, headers=auth_headers,
+                                         json=att_payload, timeout=45)
+            except Exception as e:
+                return {"success": False,
+                        "error": f"attachment upload error: {e}"}
+            if att_resp.status_code not in (200, 201):
+                return {"success": False,
+                        "error": (f"attachment upload failed "
+                                  f"({att_resp.status_code}): {att_resp.text[:200]}")}
 
     # Step 3: send the draft
     send_url = f"{base}/messages/{draft_id}/send"

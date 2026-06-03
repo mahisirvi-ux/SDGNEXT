@@ -1,10 +1,17 @@
-import re
+﻿import re
 import base64
 import requests
-from datetime import datetime
-from app.core.parser_engine import extract_bank_specifications
+from datetime import datetime, date, timedelta
+from app.core.parser_engine import extract_bank_specifications, compare_rgt_fields, validate_rgt_structure
+from app.core.email_dispatcher import (
+    send_rgt_missing_fields_reply, send_rgt_not_filled_reply, send_rgt_wrong_doc_reply
+)
 from app.core.database import SessionLocal
-from app.models.domain import IDRTechnical, IDRFunctional, IDRActionLog, TechnicalDocument
+from app.models.domain import (
+    IDRTechnical, IDRFunctional, IDRActionLog, TechnicalDocument,
+    IntegrationTouchpoint, FollowUpItem
+)
+from app.rgt_engine import generate_rgt
 from sqlalchemy.orm.attributes import flag_modified
 from app.core.graph_mailer import _get_access_token, _config
 
@@ -124,50 +131,227 @@ def sync_bank_replies():
                 )
                 db.add(doc_record)
 
-                # 2. Parse specifications
-                bank_specs = extract_bank_specifications(file_bytes)
+                # 2. Get touchpoint info for RGT regeneration
+                tp_record = db.query(IntegrationTouchpoint).filter(
+                    IntegrationTouchpoint.id == wud_id
+                ).first()
+                tp_name = tp_record.name if tp_record else ""
 
-                # 3. Update technical_details
+                func_record = db.query(IDRFunctional).filter(
+                    IDRFunctional.touchpoint_id == wud_id
+                ).first()
+                tech_owner = (func_record.technical_owner
+                              if func_record else "") or ""
+
                 tech_record = db.query(IDRTechnical).filter(
                     IDRTechnical.touchpoint_id == wud_id
                 ).first()
 
-                if tech_record:
-                    current_details = dict(tech_record.technical_details or {})
-                    current_details.update(bank_specs)
-                    tech_record.technical_details = current_details
-                    flag_modified(tech_record, "technical_details")
+                # Helper: build touchpoint data for RGT regeneration
+                def _build_tp_data():
+                    return {
+                        "id": wud_id,
+                        "name": tp_name,
+                        "source": getattr(func_record, "source_system", "") or "" if func_record else "",
+                        "business_flow": getattr(func_record, "business_flow", "") or "" if func_record else "",
+                        "business_purpose": getattr(func_record, "business_flow", "") or "" if func_record else "",
+                        "techDetails": tech_record.technical_details if tech_record else {}
+                    }
 
-                    # 4. Auto-transition status
-                    old_status = tech_record.tech_status
-                    tech_record.tech_status = "Document Review"
+                # ============================================
+                # 3. VALIDATE: Is this our RGT document?
+                # ============================================
+                is_valid_rgt = validate_rgt_structure(file_bytes)
 
-                    # 5. Set pending_with to BusinessNEXT Technical Owner
-                    func_record = db.query(IDRFunctional).filter(
-                        IDRFunctional.touchpoint_id == wud_id
-                    ).first()
-                    tech_owner = (func_record.technical_owner
-                                  if func_record else "") or ""
-                    tech_record.pending_with = tech_owner
+                if not is_valid_rgt:
+                    # WRONG DOCUMENT — reply with regenerated RGT
+                    print(f"[Inbox Sync] WUD-ID {wud_id}: Wrong document received from {sender}")
 
-                    # 6. Log the activity
-                    log = IDRActionLog(
-                        touchpoint_id=wud_id,
-                        action_type="STATUS_CHANGE",
-                        action_by="System (Inbox Sync)",
-                        comment=(f"Status: {old_status} -> Document "
-                                 f"Review. Document received from "
-                                 f"{sender}. Pending with: {tech_owner}."),
-                        open_pointer_history=(
-                            f"[{datetime.now().strftime('%b %d, %Y')}] "
-                            f"Document received from bank. Status -> "
-                            f"Document Review. Pending with {tech_owner}.")
-                    )
-                    db.add(log)
+                    if tech_record:
+                        old_status = tech_record.tech_status
+                        tech_record.tech_status = "In Progress"
+                        tech_record.pending_with = "Bank Team"
 
-                    db.commit()
+                        log = IDRActionLog(
+                            touchpoint_id=wud_id,
+                            action_type="RGT_WRONG_DOC",
+                            action_by="System (Inbox Sync)",
+                            comment=(f"Wrong document received from {sender}. "
+                                     f"Status remains In Progress. "
+                                     f"Replied with correct RGT template.")
+                        )
+                        db.add(log)
+                        db.commit()
+
+                    # Regenerate RGT and reply
+                    try:
+                        rgt_buffer = generate_rgt(_build_tp_data())
+                        send_rgt_wrong_doc_reply(
+                            wud_id=wud_id,
+                            api_name=tp_name,
+                            bank_email=sender,
+                            rgt_buffer=rgt_buffer
+                        )
+                    except Exception as reply_err:
+                        print(f"[Inbox Sync] Wrong doc reply failed WUD-ID {wud_id}: {reply_err}")
+
                     results["processed"].append(wud_id)
-                    print(f"[Inbox Sync] Mapped specs for WUD-ID {wud_id}")
+                    continue
+
+                # ============================================
+                # 4. PARSE: Extract bank specifications
+                # ============================================
+                bank_specs = extract_bank_specifications(file_bytes)
+
+                # 5. COMPARE: Run gap analysis
+                comparison = compare_rgt_fields(bank_specs)
+                missing_fields = comparison["missing"]
+                completion_pct = comparison["completion_pct"]
+                filled_count = comparison["filled_count"]
+                total_fields = comparison["total_fields"]
+
+                # ============================================
+                # 6. HANDLE BY COMPLETION LEVEL
+                # ============================================
+
+                if completion_pct == 0:
+                    # === 0% FILLED: Not filled at all ===
+                    print(f"[Inbox Sync] WUD-ID {wud_id}: 0% filled — sending fresh RGT")
+
+                    if tech_record:
+                        tech_record.tech_status = "In Progress"
+                        tech_record.pending_with = "Bank Team"
+
+                        current_details = dict(tech_record.technical_details or {})
+                        current_details["rgt_completion_pct"] = 0
+                        current_details["rgt_missing_count"] = total_fields
+                        current_details["rgt_last_checked"] = datetime.now().strftime("%Y-%m-%d %H:%M")
+                        tech_record.technical_details = current_details
+                        flag_modified(tech_record, "technical_details")
+
+                        log = IDRActionLog(
+                            touchpoint_id=wud_id,
+                            action_type="RGT_NOT_FILLED",
+                            action_by="System (Inbox Sync)",
+                            comment=(f"Document received from {sender} but 0% filled. "
+                                     f"Status: In Progress. Re-sent RGT template.")
+                        )
+                        db.add(log)
+                        db.commit()
+
+                    # Regenerate RGT and reply
+                    try:
+                        rgt_buffer = generate_rgt(_build_tp_data())
+                        send_rgt_not_filled_reply(
+                            wud_id=wud_id,
+                            api_name=tp_name,
+                            bank_email=sender,
+                            rgt_buffer=rgt_buffer
+                        )
+                    except Exception as reply_err:
+                        print(f"[Inbox Sync] Not-filled reply failed WUD-ID {wud_id}: {reply_err}")
+
+                    results["processed"].append(wud_id)
+
+                elif completion_pct == 100:
+                    # === 100% FILLED: All done — Document Review ===
+                    print(f"[Inbox Sync] WUD-ID {wud_id}: 100% filled — moving to Document Review")
+
+                    if tech_record:
+                        current_details = dict(tech_record.technical_details or {})
+                        current_details.update(bank_specs)
+                        current_details["rgt_completion_pct"] = 100
+                        current_details["rgt_missing_count"] = 0
+                        current_details["rgt_last_checked"] = datetime.now().strftime("%Y-%m-%d %H:%M")
+                        tech_record.technical_details = current_details
+                        flag_modified(tech_record, "technical_details")
+
+                        old_status = tech_record.tech_status
+                        tech_record.tech_status = "Document Review"
+                        tech_record.pending_with = tech_owner
+
+                        log = IDRActionLog(
+                            touchpoint_id=wud_id,
+                            action_type="STATUS_CHANGE",
+                            action_by="System (Inbox Sync)",
+                            comment=(f"Status: {old_status} -> Document Review. "
+                                     f"RGT 100% complete. Document from {sender}. "
+                                     f"Pending with: {tech_owner}.")
+                        )
+                        db.add(log)
+                        db.commit()
+
+                    results["processed"].append(wud_id)
+
+                else:
+                    # === 1-99% FILLED: Partial — In Progress ===
+                    print(f"[Inbox Sync] WUD-ID {wud_id}: {completion_pct}% filled — requesting missing fields")
+
+                    if tech_record:
+                        current_details = dict(tech_record.technical_details or {})
+                        current_details.update(bank_specs)
+                        current_details["rgt_completion_pct"] = completion_pct
+                        current_details["rgt_missing_count"] = len(missing_fields)
+                        current_details["rgt_last_checked"] = datetime.now().strftime("%Y-%m-%d %H:%M")
+                        tech_record.technical_details = current_details
+                        flag_modified(tech_record, "technical_details")
+
+                        old_status = tech_record.tech_status
+                        tech_record.tech_status = "In Progress"
+                        tech_record.pending_with = "Bank Team"
+
+                        log = IDRActionLog(
+                            touchpoint_id=wud_id,
+                            action_type="STATUS_CHANGE",
+                            action_by="System (Inbox Sync)",
+                            comment=(f"Status: {old_status} -> In Progress. "
+                                     f"RGT {completion_pct}% filled ({filled_count}/{total_fields}). "
+                                     f"Document from {sender}. Awaiting missing fields.")
+                        )
+                        db.add(log)
+
+                        # Create follow-up items for missing fields
+                        due_date = date.today() + timedelta(days=3)
+                        for mf in missing_fields:
+                            followup = FollowUpItem(
+                                touchpoint_id=wud_id,
+                                description=f"RGT Missing: {mf['label']}",
+                                action=f"Bank team to provide '{mf['label']}' in RGT document",
+                                owner=tech_owner or "Bank Team",
+                                due_date=due_date,
+                                status="OPEN",
+                                created_by="System (RGT Gap Analysis)"
+                            )
+                            db.add(followup)
+
+                        # Log gap analysis
+                        gap_log = IDRActionLog(
+                            touchpoint_id=wud_id,
+                            action_type="RGT_GAP_ANALYSIS",
+                            action_by="System (Inbox Sync)",
+                            comment=(f"RGT Gap Analysis: {filled_count}/{total_fields} "
+                                     f"fields filled ({completion_pct}%). "
+                                     f"{len(missing_fields)} follow-ups created.")
+                        )
+                        db.add(gap_log)
+                        db.commit()
+
+                    # Reply with missing fields table + bank's own doc attached
+                    try:
+                        send_rgt_missing_fields_reply(
+                            wud_id=wud_id,
+                            api_name=tp_name,
+                            missing_fields=missing_fields,
+                            completion_pct=completion_pct,
+                            filled_count=filled_count,
+                            total_fields=total_fields,
+                            bank_email=sender,
+                            bank_doc_bytes=file_bytes
+                        )
+                    except Exception as reply_err:
+                        print(f"[Inbox Sync] Gap reply failed WUD-ID {wud_id}: {reply_err}")
+
+                    results["processed"].append(wud_id)
 
             except Exception as e:
                 db.rollback()
