@@ -17,7 +17,23 @@ router = APIRouter()
 class ProjectCreate(BaseModel):
     project_name: str
 
+class CRMConfigUpdate(BaseModel):
+    """Per-project CRM database configuration.
 
+    Oracle example:
+        {"host": "192.168.0.16", "port": 1521, "service": "CRMNEXTLOCAL",
+         "user": "SIB_DEV_BUSINESSNEXT_AUG25", "password": "...", "schema": "SIB_DEV_BUSINESSNEXT_AUG25"}
+
+    SQL Server example:
+        {"host": "192.168.0.20", "port": 1433, "database": "RBL_PHASE4_DEVELOPMENT",
+         "user": "sa", "password": "...", "schema": "dbo"}
+
+    PostgreSQL example:
+        {"host": "192.168.0.30", "port": 5432, "database": "crmnext_db",
+         "user": "crm_user", "password": "...", "schema": "public"}
+    """
+    crm_db_type: str                # "oracle" | "sqlserver" | "postgres"
+    crm_db_config: dict = {}        # credentials dict (schema-specific keys above)
 @router.get("/projects")
 def get_projects(db: Session = Depends(get_db)):
     """Fetch all projects with enriched KPI data."""
@@ -320,4 +336,94 @@ def get_project_drilldown(project_id: int, db: Session = Depends(get_db)):
             "touchpoints_completed": completed_total
         },
         "recent_activity": recent_activity
+    }
+@router.put("/api/projects/{project_id}/crm-config")
+def update_project_crm_config(
+    project_id: int,
+    payload: CRMConfigUpdate,
+    db: Session = Depends(get_db),
+):
+    """Save per-project CRM database type and credentials.
+
+    Oracle projects already using ORACLE_* env vars can call this to
+    explicitly configure their credentials, or leave crm_db_config empty
+    to keep using the env-var fallback.
+
+    Triggers a connectivity test before saving — returns 400 if the
+    supplied credentials cannot open a connection.
+    """
+    from app.core.crm_db import get_crm_connection, get_crm_schema
+
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    db_type = payload.crm_db_type.strip().lower()
+    if db_type not in ("oracle", "sqlserver", "postgres"):
+        raise HTTPException(
+            status_code=400,
+            detail="crm_db_type must be one of: oracle, sqlserver, postgres",
+        )
+
+    # Connectivity test before persisting
+    test_conn = None
+    try:
+        test_conn = get_crm_connection(db_type, payload.crm_db_config)
+        test_cursor = test_conn.cursor()
+        # Lightweight probe: just verify the schema/table exists
+        schema = get_crm_schema(db_type, payload.crm_db_config)
+        probe_sql = f"SELECT 1 FROM {schema}.MASHUPCONNECTION WHERE 1=0"
+        test_cursor.execute(probe_sql)
+    except Exception as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"CRM DB connectivity test failed: {e}",
+        )
+    finally:
+        if test_conn:
+            try:
+                test_conn.close()
+            except Exception:
+                pass
+
+    # Persist
+    project.crm_db_type = db_type
+    project.crm_db_config = payload.crm_db_config
+    db.commit()
+    db.refresh(project)
+
+    return {
+        "success": True,
+        "project_id": project_id,
+        "project_name": project.project_name,
+        "crm_db_type": project.crm_db_type,
+        "crm_db_config_keys": list(payload.crm_db_config.keys()),
+        "message": f"CRM DB config saved for project '{project.project_name}' ({db_type.upper()}).",
+    }
+
+
+@router.get("/api/projects/{project_id}/crm-config")
+def get_project_crm_config(
+    project_id: int,
+    db: Session = Depends(get_db),
+):
+    """Return current CRM DB config for a project (password masked)."""
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    config = dict(project.crm_db_config or {})
+    # Mask password in response
+    if "password" in config:
+        config["password"] = "***"
+
+    return {
+        "project_id": project_id,
+        "project_name": project.project_name,
+        "crm_db_type": project.crm_db_type or "oracle",
+        "crm_db_config": config,
+        "using_env_fallback": (
+            (project.crm_db_type or "oracle") == "oracle"
+            and not (project.crm_db_config or {}).get("host")
+        ),
     }

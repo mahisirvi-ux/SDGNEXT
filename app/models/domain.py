@@ -12,7 +12,8 @@ class Project(Base):
     id = Column(Integer, primary_key=True, index=True)
     project_name = Column(String(50), unique=True, index=True)
     created_at = Column(TIMESTAMP, server_default=func.now(), nullable=True)
-
+    crm_db_type   = Column(String(20),  default="oracle", nullable=True)
+    crm_db_config = Column(JSON,        default={},       nullable=True)
     touchpoints = relationship("IntegrationTouchpoint", back_populates="project", cascade="all, delete-orphan")
     departments = relationship("DepartmentMaster", back_populates="project", cascade="all, delete-orphan")
 
