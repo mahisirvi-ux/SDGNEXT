@@ -111,6 +111,16 @@ def get_owner_id(config: dict) -> int:
     return 914  # legacy default
 
 
+def get_project_short_name(config: dict) -> str:
+    """Return the project short name (e.g. 'SBI', 'PNB') from the project config.
+
+    Used to name CRM connections. Set it per project in crm_db_config as
+    "project_short_name". Returns "" if not configured (caller falls back
+    to the full project name).
+    """
+    return (config.get("project_short_name") or "").strip()
+
+
 def get_crm_schema(db_type: str, config: dict) -> str:
     """Return the schema prefix for use in SQL (e.g. 'dbo', 'public', 'MY_SCHEMA').
 

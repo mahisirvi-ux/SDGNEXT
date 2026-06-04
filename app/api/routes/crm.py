@@ -15,7 +15,7 @@ from app.core.database import get_db
 from app.core.crm_db import (
     get_crm_connection, get_crm_schema,
     now_sql, adapt_query, atomic_increment,
-    get_crm_config_for_project, get_owner_id,
+    get_crm_config_for_project, get_owner_id, get_project_short_name,
     DB_TYPE_ORACLE,
 )
 from app.models.domain import (
@@ -48,16 +48,74 @@ def _get_tp_data(tp_id: int, db: Session):
 
 
 def _get_crm_context(tp, db: Session):
-    """Resolve CRM DB type, config, schema, and owner_id for the touchpoint's project.
-    Returns: (db_type, crm_config, schema, owner_id)
+    """Resolve CRM DB type, config, schema, owner_id, and project short name
+    for the touchpoint's project.
+    Returns: (db_type, crm_config, schema, owner_id, project_short)
     """
     project = db.query(Project).filter(Project.id == tp.project_id).first()
     if not project:
-        return DB_TYPE_ORACLE, {}, "", DEFAULT_OWNER_ID
+        return DB_TYPE_ORACLE, {}, "", DEFAULT_OWNER_ID, ""
     db_type, config = get_crm_config_for_project(project)
     schema = get_crm_schema(db_type, config)
     owner_id = get_owner_id(config)
-    return db_type, config, schema, owner_id
+    project_short = get_project_short_name(config) or _derive_short_name(project.project_name)
+    return db_type, config, schema, owner_id, project_short
+
+
+# Words skipped when deriving an acronym from a bank/project name
+_SHORTNAME_STOPWORDS = {"of", "and", "the", "for", "to", "in", "on", "at", "a", "an", "&"}
+
+
+def _derive_short_name(full_name: str) -> str:
+    """Derive a short acronym from a project/bank name.
+
+        "State Bank of India"   -> "SBI"
+        "Punjab National Bank"  -> "PNB"
+        "HDFC Bank"             -> "HDFC"  (existing acronym token preferred)
+        "ABC"                   -> "ABC"   (single token kept as-is)
+
+    An explicit project_short_name in crm_db_config always overrides this.
+    """
+    name = (full_name or "").strip()
+    if not name:
+        return ""
+
+    tokens = [t for t in re.split(r"[\s\-_]+", name) if t]
+
+    # If the name already contains an acronym-like token (all caps, 2+ chars),
+    # prefer the longest one (e.g. "HDFC Bank" -> "HDFC", "ICICI Bank" -> "ICICI").
+    acronym_tokens = [t for t in tokens if len(t) >= 2 and t.isupper()]
+    if acronym_tokens:
+        return max(acronym_tokens, key=len)
+
+    # Otherwise build an acronym from the initials of significant words.
+    significant = [t for t in tokens if t.lower() not in _SHORTNAME_STOPWORDS]
+    if len(significant) <= 1:
+        return name  # single meaningful word — already short
+    return "".join(t[0].upper() for t in significant)
+
+
+def _build_connection_naming(project_short, source_system, fallback_name):
+    """Build (NAME, DESCRIPTION) for a MASHUPCONNECTION.
+
+    NAME        = "{project_short} {source_system} Connection"   e.g. "SBI CBS Connection"
+    DESCRIPTION = "Integration connection for {project_short} {source_system} source system"
+
+    Falls back gracefully when project_short or source_system is missing.
+    """
+    short = (project_short or "").strip()
+    src = (source_system or "").strip()
+
+    if src:
+        prefix = " ".join(f"{short} {src}".split())          # collapse double spaces
+        name = " ".join(f"{prefix} Connection".split())
+        description = " ".join(
+            f"Integration connection for {prefix} source system".split()
+        )
+        return name, description
+
+    # No source system → fall back to the API/touchpoint name for both
+    return fallback_name, fallback_name
 
 
 def _get_api_name(tech, tp):
@@ -89,22 +147,69 @@ def _save_connection_id(db: Session, tech, connection_id: int):
     flag_modified(tech, "technical_details")
 
 
-def _find_shared_connection_id(db: Session, current_tp_id: int, uat_url: str):
-    if not uat_url:
-        return None
-    all_techs = db.query(IDRTechnical).filter(
+def _get_source_system(tech, func):
+    """Resolve the source system for a touchpoint.
+    Prefers the technical record, falls back to the functional record.
+    """
+    if tech and (getattr(tech, "source_system", "") or "").strip():
+        return tech.source_system.strip()
+    if func and (getattr(func, "source_system", "") or "").strip():
+        return func.source_system.strip()
+    return ""
+
+
+def _resolve_connection_for_source(db, current_tp_id, source_system, uat_url, prod_url):
+    """Group connections by Source System.
+
+    CRM model: one connection per source system (same base URL), many EDS
+    (one per method) under it. This scans sibling touchpoints sharing the
+    same source system and:
+      - validates their base URLs match (a source system must map to ONE URL)
+      - returns an existing connection id to reuse if one was already created
+
+    Returns: (shared_connection_id_or_None, error_message_or_None)
+    """
+    if not source_system:
+        # No source system => cannot group; treat as standalone (no reuse, no validation)
+        return None, None
+
+    src_lower = source_system.lower()
+    shared_cid = None
+
+    siblings = db.query(IDRTechnical).filter(
         IDRTechnical.touchpoint_id != current_tp_id
     ).all()
-    for other_tech in all_techs:
-        td = other_tech.technical_details
-        if not td or not isinstance(td, dict):
+
+    for other in siblings:
+        if (getattr(other, "source_system", "") or "").strip().lower() != src_lower:
             continue
-        if (td.get("uatUrl") or "").strip() == uat_url and td.get("crmConnectionId") is not None:
+
+        td = other.technical_details if isinstance(other.technical_details, dict) else {}
+        other_uat = (td.get("uatUrl") or "").strip()
+        other_prod = (td.get("prodUrl") or "").strip()
+
+        # Validate URL consistency (only compare when both sides have a value)
+        if other_uat and uat_url and other_uat.lower() != uat_url.lower():
+            return None, (
+                f"Source system '{source_system}' is already mapped to a different "
+                f"UAT URL ('{other_uat}'). A source system cannot have different URLs. "
+                f"Please align the URL or use a different source system name."
+            )
+        if other_prod and prod_url and other_prod.lower() != prod_url.lower():
+            return None, (
+                f"Source system '{source_system}' is already mapped to a different "
+                f"Prod URL ('{other_prod}'). A source system cannot have different URLs. "
+                f"Please align the URL or use a different source system name."
+            )
+
+        # Same source system + consistent URL => reuse its connection if present
+        if shared_cid is None and td.get("crmConnectionId") is not None:
             try:
-                return int(td["crmConnectionId"])
+                shared_cid = int(td["crmConnectionId"])
             except (ValueError, TypeError):
-                continue
-    return None
+                pass
+
+    return shared_cid, None
 
 
 def _get_stored_datasource_id(tech):
@@ -203,13 +308,13 @@ def _build_mapping_xml(unique_fields: list) -> str:
     return f"<mappings>\n{mapping_elements}</mappings>"
 
 
-def _build_preview_dict(owner_id, connection_id, api_name, is_update, db_type=DB_TYPE_ORACLE):
+def _build_preview_dict(owner_id, connection_id, conn_name, conn_description, is_update, db_type=DB_TYPE_ORACLE):
     now = now_sql(db_type)
     return {
         "OWNERID": owner_id,
         "CONNECTIONID": connection_id,
-        "NAME": api_name,
-        "DESCRIPTION": api_name,
+        "NAME": conn_name,
+        "DESCRIPTION": conn_description,
         "TYPE": 10,
         "TIMEOUT": 0,
         "ISENABLED": 1,
@@ -231,7 +336,7 @@ def _build_preview_dict(owner_id, connection_id, api_name, is_update, db_type=DB
 # SHARED HELPERS — INSERT wrappers (dialect-aware)
 # ============================================================
 
-def _do_insert(cursor, schema, db_type, owner_id, connection_id, api_name):
+def _do_insert(cursor, schema, db_type, owner_id, connection_id, conn_name, conn_description):
     now = now_sql(db_type)
     sql = f"""INSERT INTO {schema}.MASHUPCONNECTION (
             OWNERID, CONNECTIONID, NAME, DESCRIPTION,
@@ -252,11 +357,30 @@ def _do_insert(cursor, schema, db_type, owner_id, connection_id, api_name):
         )"""
     params = {
         "ownerid": owner_id, "connectionid": connection_id,
-        "name": api_name, "description": api_name,
+        "name": conn_name, "description": conn_description,
         "type": 10, "timeout": 0, "isenabled": 1,
         "createdby": "1", "lastmodifiedby": "1",
         "isfreshconnection": 0, "encryptiontype": -1,
         "useencryption": 0, "keysize": -1,
+    }
+    sql, params = adapt_query(sql, params, db_type)
+    cursor.execute(sql, params)
+
+
+def _do_connection_update(cursor, schema, db_type, owner_id, connection_id, conn_name, conn_description):
+    """UPDATE an existing MASHUPCONNECTION in place.
+
+    Never deletes — a delete would violate FK_MashupDataSource_MashupConnection
+    when a datasource already references this connection. Only the fields that
+    can change on re-push are updated.
+    """
+    now = now_sql(db_type)
+    sql = (f"UPDATE {schema}.MASHUPCONNECTION "
+           f"SET NAME = :name, DESCRIPTION = :description, LASTMODIFIEDON = {now} "
+           f"WHERE OWNERID = :owner AND CONNECTIONID = :cid")
+    params = {
+        "name": conn_name, "description": conn_description,
+        "owner": owner_id, "cid": connection_id,
     }
     sql, params = adapt_query(sql, params, db_type)
     cursor.execute(sql, params)
@@ -315,6 +439,28 @@ def _do_ws_insert(cursor, schema, db_type, owner_id, connection_id, service_name
         "iswcfservice": 0, "issilverlightclient": 0,
         "userid": "imhkV5ov3MM=", "password": "imhkV5ov3MM=",
         "usereflection": 0, "requestheaderkeyxml": request_header_key_xml,
+    }
+    sql, params = adapt_query(sql, params, db_type)
+    cursor.execute(sql, params)
+
+
+def _do_ws_update(cursor, schema, db_type, owner_id, connection_id,
+                  service_name, service_xml, request_header_key_xml):
+    """UPDATE an existing MASHUPWSCONNECTION in place (no delete).
+
+    Only the fields that change on re-push are updated:
+    SERVICENAME, SERVICEXML, REQUESTHEADERKEYXML.
+    """
+    sql = (f"UPDATE {schema}.MASHUPWSCONNECTION "
+           f"SET SERVICENAME = :servicename, "
+           f"SERVICEXML = :servicexml, "
+           f"REQUESTHEADERKEYXML = :requestheaderkeyxml "
+           f"WHERE OWNERID = :owner AND CONNECTIONID = :cid")
+    params = {
+        "servicename": service_name,
+        "servicexml": service_xml,
+        "requestheaderkeyxml": request_header_key_xml,
+        "owner": owner_id, "cid": connection_id,
     }
     sql, params = adapt_query(sql, params, db_type)
     cursor.execute(sql, params)
@@ -437,13 +583,30 @@ def _do_field_insert(cursor, schema, db_type, owner_id, field_id, datasource_id,
 @router.get("/api/crm/mashup/preview/{tp_id}")
 def crm_mashup_preview(tp_id: int, db: Session = Depends(get_db)):
     tp, tech, func = _get_tp_data(tp_id, db)
-    db_type, crm_config, schema, owner_id = _get_crm_context(tp, db)
+    db_type, crm_config, schema, owner_id, project_short = _get_crm_context(tp, db)
 
     api_name = _get_api_name(tech, tp)
     if not api_name:
         raise HTTPException(status_code=400, detail="API Name is empty.")
 
+    # Connection is named after the source system
+    source_system = _get_source_system(tech, func)
+    conn_name, conn_description = _build_connection_naming(project_short, source_system, api_name)
+
+    td = tech.technical_details if (tech and isinstance(tech.technical_details, dict)) else {}
+    uat_url = (td.get("uatUrl") or "").strip()
+    prod_url = (td.get("prodUrl") or "").strip()
+
     stored_cid = _get_stored_connection_id(tech)
+
+    # Surface URL-consistency conflicts early, and find a shared connection if any
+    shared_cid = None
+    if not stored_cid:
+        shared_cid, conflict = _resolve_connection_for_source(
+            db, tp_id, source_system, uat_url, prod_url
+        )
+        if conflict:
+            raise HTTPException(status_code=400, detail=conflict)
 
     if stored_cid:
         conn = None
@@ -453,18 +616,31 @@ def crm_mashup_preview(tp_id: int, db: Session = Depends(get_db)):
             if _verify_connection_exists(cursor, schema, db_type, owner_id, stored_cid):
                 return {
                     "tp_id": tp_id, "tp_name": tp.name,
-                    "api_name": api_name, "is_update": True,
-                    "preview": _build_preview_dict(owner_id, stored_cid, api_name, True, db_type),
+                    "api_name": conn_name, "source_system": source_system,
+                    "is_update": True,
+                    "preview": _build_preview_dict(owner_id, stored_cid, conn_name, conn_description, True, db_type),
                 }
+        except HTTPException:
+            raise
         except Exception:
             return {
                 "tp_id": tp_id, "tp_name": tp.name,
-                "api_name": api_name, "is_update": True,
-                "preview": _build_preview_dict(owner_id, stored_cid, api_name, True, db_type),
+                "api_name": conn_name, "source_system": source_system,
+                "is_update": True,
+                "preview": _build_preview_dict(owner_id, stored_cid, conn_name, conn_description, True, db_type),
             }
         finally:
             if conn:
                 conn.close()
+
+    # If a connection for this source system already exists, preview it as an update
+    if shared_cid:
+        return {
+            "tp_id": tp_id, "tp_name": tp.name,
+            "api_name": conn_name, "source_system": source_system,
+            "is_update": True, "shared": True,
+            "preview": _build_preview_dict(owner_id, shared_cid, conn_name, conn_description, True, db_type),
+        }
 
     conn = None
     try:
@@ -485,8 +661,9 @@ def crm_mashup_preview(tp_id: int, db: Session = Depends(get_db)):
 
         return {
             "tp_id": tp_id, "tp_name": tp.name,
-            "api_name": api_name, "is_update": False,
-            "preview": _build_preview_dict(owner_id, connection_id, api_name, False, db_type),
+            "api_name": conn_name, "source_system": source_system,
+            "is_update": False,
+            "preview": _build_preview_dict(owner_id, connection_id, conn_name, conn_description, False, db_type),
         }
     except HTTPException:
         raise
@@ -500,64 +677,77 @@ def crm_mashup_preview(tp_id: int, db: Session = Depends(get_db)):
 @router.post("/api/crm/mashup/insert/{tp_id}")
 def crm_mashup_insert(tp_id: int, db: Session = Depends(get_db)):
     tp, tech, func = _get_tp_data(tp_id, db)
-    db_type, crm_config, schema, owner_id = _get_crm_context(tp, db)
+    db_type, crm_config, schema, owner_id, project_short = _get_crm_context(tp, db)
 
     api_name = _get_api_name(tech, tp)
     if not api_name:
         raise HTTPException(status_code=400, detail="API Name is empty.")
 
-    stored_cid = _get_stored_connection_id(tech)
+    # Connection is named after the SOURCE SYSTEM (one connection per source system).
+    source_system = _get_source_system(tech, func)
+    conn_name, conn_description = _build_connection_naming(project_short, source_system, api_name)   # fall back to API name if no source system
 
     td = tech.technical_details if (tech and isinstance(tech.technical_details, dict)) else {}
     uat_url = (td.get("uatUrl") or "").strip()
+    prod_url = (td.get("prodUrl") or "").strip()
+
+    stored_cid = _get_stored_connection_id(tech)
+
+    # Group by source system + validate URL consistency
     shared_cid = None
-    if not stored_cid and uat_url:
-        shared_cid = _find_shared_connection_id(db, tp_id, uat_url)
+    if not stored_cid:
+        shared_cid, conflict = _resolve_connection_for_source(
+            db, tp_id, source_system, uat_url, prod_url
+        )
+        if conflict:
+            raise HTTPException(status_code=400, detail=conflict)
 
     conn = None
     try:
         conn = get_crm_connection(db_type, crm_config)
         cursor = conn.cursor()
 
-        if stored_cid:
-            connection_id = stored_cid
-            is_update = True
-            for tbl in ["MASHUPWSCONNECTION", "MASHUPCONNECTION"]:
-                sql = (f"DELETE FROM {schema}.{tbl} "
-                       f"WHERE OWNERID = :owner AND CONNECTIONID = :cid")
-                s, p = adapt_query(sql, {"owner": owner_id, "cid": connection_id}, db_type)
-                cursor.execute(s, p)
-            _do_insert(cursor, schema, db_type, owner_id, connection_id, api_name)
+        candidate_cid = stored_cid or shared_cid
 
-        elif shared_cid:
-            connection_id = shared_cid
+        if candidate_cid and _verify_connection_exists(cursor, schema, db_type, owner_id, candidate_cid):
+            # Connection already exists in CRM — UPDATE in place.
+            # Never delete: a datasource may reference it via FK.
+            connection_id = candidate_cid
             is_update = True
-            for tbl in ["MASHUPWSCONNECTION", "MASHUPCONNECTION"]:
-                sql = (f"DELETE FROM {schema}.{tbl} "
-                       f"WHERE OWNERID = :owner AND CONNECTIONID = :cid")
-                s, p = adapt_query(sql, {"owner": owner_id, "cid": connection_id}, db_type)
-                cursor.execute(s, p)
-            _do_insert(cursor, schema, db_type, owner_id, connection_id, api_name)
+            _do_connection_update(cursor, schema, db_type, owner_id, connection_id, conn_name, conn_description)
+
+        elif candidate_cid:
+            # We have a stored/shared ID but the row is missing in CRM — insert with that ID.
+            connection_id = candidate_cid
+            is_update = False
+            _do_insert(cursor, schema, db_type, owner_id, connection_id, conn_name, conn_description)
 
         else:
+            # Brand new connection — allocate the next ID.
             is_update = False
             connection_id = atomic_increment(cursor, schema, db_type, owner_id, ITEM_ID)
-            _do_insert(cursor, schema, db_type, owner_id, connection_id, api_name)
+            _do_insert(cursor, schema, db_type, owner_id, connection_id, conn_name, conn_description)
 
         conn.commit()
         _save_connection_id(db, tech, connection_id)
 
         action = "updated" if is_update else "created"
+        reused = " (shared by source system)" if (shared_cid and not stored_cid) else ""
         db.add(IDRActionLog(
             touchpoint_id=tp_id, action_type="Manual Update", action_by="User",
-            comment=f"CRM MASHUPCONNECTION {action}. CONNECTIONID={connection_id}, NAME={api_name}",
+            comment=f"CRM MASHUPCONNECTION {action}. CONNECTIONID={connection_id}, NAME={conn_name}{reused}",
         ))
         db.commit()
 
         return {
             "success": True, "connection_id": connection_id,
-            "name": api_name, "is_update": is_update,
-            "message": f"MASHUPCONNECTION {'updated' if is_update else 'created'} successfully. CONNECTIONID = {connection_id}",
+            "name": conn_name, "source_system": source_system,
+            "is_update": is_update, "shared": bool(shared_cid and not stored_cid),
+            "message": (
+                f"MASHUPCONNECTION {'updated' if is_update else 'created'} successfully "
+                f"for source system '{conn_name}'. CONNECTIONID = {connection_id}"
+                + (" (reused existing connection for this source system)" if (shared_cid and not stored_cid) else "")
+            ),
         }
     except HTTPException:
         raise
@@ -580,7 +770,7 @@ def crm_mashupws_preview(tp_id: int, db: Session = Depends(get_db)):
     from app.core.ai_agent import generate_crm_headers_xml
 
     tp, tech, func = _get_tp_data(tp_id, db)
-    db_type, crm_config, schema, owner_id = _get_crm_context(tp, db)
+    db_type, crm_config, schema, owner_id, project_short = _get_crm_context(tp, db)
 
     stored_cid = _get_stored_connection_id(tech)
     if not stored_cid:
@@ -589,6 +779,10 @@ def crm_mashupws_preview(tp_id: int, db: Session = Depends(get_db)):
     api_name = _get_api_name(tech, tp)
     if not api_name:
         raise HTTPException(status_code=400, detail="API Name is empty.")
+
+    # WS service name mirrors the connection name (source system)
+    source_system = _get_source_system(tech, func)
+    conn_name, conn_description = _build_connection_naming(project_short, source_system, api_name)
 
     service_location = MOCK_SERVICE_LOCATION
     td = tech.technical_details if (tech and isinstance(tech.technical_details, dict)) else {}
@@ -615,7 +809,7 @@ def crm_mashupws_preview(tp_id: int, db: Session = Depends(get_db)):
         "connection_id": stored_cid, "is_update": is_update,
         "preview": {
             "OWNERID": owner_id, "CONNECTIONID": stored_cid,
-            "SERVICENAME": api_name, "SERVICELOCATION": service_location,
+            "SERVICENAME": conn_name, "SERVICELOCATION": service_location,
             "WSDLLOCATION": " ", "SERVICEXML": service_xml,
             "ISWCFSERVICE": 0, "ISSILVERLIGHTCLIENT": 0,
             "USERID": "imhkV5ov3MM=", "PASSWORD": "imhkV5ov3MM=",
@@ -630,7 +824,7 @@ def crm_mashupws_insert(tp_id: int, db: Session = Depends(get_db)):
     from app.core.ai_agent import generate_crm_headers_xml
 
     tp, tech, func = _get_tp_data(tp_id, db)
-    db_type, crm_config, schema, owner_id = _get_crm_context(tp, db)
+    db_type, crm_config, schema, owner_id, project_short = _get_crm_context(tp, db)
 
     stored_cid = _get_stored_connection_id(tech)
     if not stored_cid:
@@ -639,6 +833,10 @@ def crm_mashupws_insert(tp_id: int, db: Session = Depends(get_db)):
     api_name = _get_api_name(tech, tp)
     if not api_name:
         raise HTTPException(status_code=400, detail="API Name is empty.")
+
+    # WS service name mirrors the connection name (source system)
+    source_system = _get_source_system(tech, func)
+    conn_name, conn_description = _build_connection_naming(project_short, source_system, api_name)
 
     service_location = MOCK_SERVICE_LOCATION
     td = tech.technical_details if (tech and isinstance(tech.technical_details, dict)) else {}
@@ -656,13 +854,12 @@ def crm_mashupws_insert(tp_id: int, db: Session = Depends(get_db)):
 
         is_update = _ws_row_exists(cursor, schema, db_type, owner_id, stored_cid)
         if is_update:
-            sql = (f"DELETE FROM {schema}.MASHUPWSCONNECTION "
-                   f"WHERE OWNERID = :owner AND CONNECTIONID = :cid")
-            s, p = adapt_query(sql, {"owner": owner_id, "cid": stored_cid}, db_type)
-            cursor.execute(s, p)
-
-        _do_ws_insert(cursor, schema, db_type, owner_id, stored_cid, api_name,
-                      service_location, service_xml, request_header_key_xml)
+            # UPDATE in place — no delete needed.
+            _do_ws_update(cursor, schema, db_type, owner_id, stored_cid,
+                          conn_name, service_xml, request_header_key_xml)
+        else:
+            _do_ws_insert(cursor, schema, db_type, owner_id, stored_cid, conn_name,
+                          service_location, service_xml, request_header_key_xml)
         conn.commit()
 
         action = "updated" if is_update else "created"
@@ -699,7 +896,7 @@ def crm_datasource_insert(
     db: Session = Depends(get_db),
 ):
     tp, tech, func = _get_tp_data(tp_id, db)
-    db_type, crm_config, schema, owner_id = _get_crm_context(tp, db)
+    db_type, crm_config, schema, owner_id, project_short = _get_crm_context(tp, db)
 
     stored_cid = _get_stored_connection_id(tech)
     if not stored_cid:
