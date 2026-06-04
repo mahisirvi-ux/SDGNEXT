@@ -889,6 +889,40 @@ def crm_mashupws_insert(tp_id: int, db: Session = Depends(get_db)):
 # MASHUPDATASOURCE — route
 # ============================================================
 
+@router.get("/api/crm/datasource/check/{tp_id}")
+def crm_datasource_check(tp_id: int, db: Session = Depends(get_db)):
+    """Lightweight check used by the UI to decide whether to show an
+    'update existing datasource?' confirmation popup. Does NOT modify the CRM DB.
+
+    Returns: { is_update, datasource_id, datasource_name }
+    """
+    tp, tech, func = _get_tp_data(tp_id, db)
+    db_type, crm_config, schema, owner_id, project_short = _get_crm_context(tp, db)
+
+    stored_dsid = _get_stored_datasource_id(tech)
+    if not stored_dsid:
+        return {"is_update": False, "datasource_id": None, "datasource_name": None}
+
+    conn = None
+    try:
+        conn = get_crm_connection(db_type, crm_config)
+        cursor = conn.cursor()
+        sql = (f"SELECT NAME FROM {schema}.MASHUPDATASOURCE "
+               f"WHERE OWNERID = :owner AND DATASOURCEID = :dsid")
+        sql, params = adapt_query(sql, {"owner": owner_id, "dsid": stored_dsid}, db_type)
+        cursor.execute(sql, params)
+        row = cursor.fetchone()
+        if row:
+            return {"is_update": True, "datasource_id": stored_dsid, "datasource_name": row[0]}
+        return {"is_update": False, "datasource_id": None, "datasource_name": None}
+    except Exception:
+        # If we can't verify, err on the side of confirming (treat as update)
+        return {"is_update": True, "datasource_id": stored_dsid, "datasource_name": None}
+    finally:
+        if conn:
+            conn.close()
+
+
 @router.post("/api/crm/datasource/insert/{tp_id}")
 def crm_datasource_insert(
     tp_id: int,

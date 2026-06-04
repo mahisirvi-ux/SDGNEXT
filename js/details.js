@@ -779,7 +779,19 @@ async function startConnectionAnimation() {
     closeConfigMenuModal();
     document.getElementById('configurator-modal').classList.remove('hidden');
 
-    const targetName = tp.name || '';
+    // Fetch the source-system-based NAME/DESCRIPTION that will actually be
+    // pushed to CRM (matches the CRM DB naming logic).
+    let targetName = tp.name || '';
+    let targetDesc = '';
+    try {
+        const pvResp = await fetch(`/api/crm/mashup/preview/${tp.id}`);
+        const pv = await pvResp.json();
+        if (pvResp.ok && pv.preview) {
+            targetName = pv.preview.NAME || targetName;
+            targetDesc = pv.preview.DESCRIPTION || '';
+        }
+    } catch (e) { /* fall back to touchpoint name, empty description */ }
+
     let targetBaseUrl = (td.uatUrl || '').trim();
     let endpoint = (td.endpointUrl || '').trim();
     if (targetBaseUrl && endpoint && targetBaseUrl.endsWith(endpoint)) {
@@ -792,8 +804,10 @@ async function startConnectionAnimation() {
 
     const nameField = document.getElementById('config-name');
     const urlField = document.getElementById('config-base-url');
+    const descField = document.getElementById('config-desc');
     nameField.value = '';
     urlField.value = '';
+    if (descField) descField.value = '';
     
     const headersContainer = document.getElementById('config-headers-container');
     headersContainer.innerHTML = '';
@@ -826,6 +840,7 @@ async function startConnectionAnimation() {
 
     await sleep(600);
     await typeText(nameField, targetName);
+    if (descField) descField.value = targetDesc;
     await sleep(400);
     await typeText(urlField, targetBaseUrl);
     await sleep(400);
@@ -991,7 +1006,92 @@ function edsSwitchTab(direction) {
 // Inserts MASHUPCONNECTION then MASHUPWSCONNECTION
 // in one sequential operation. Idempotent.
 // ================================================
+// ================================================
+// CRM update confirmation popup (reusable)
+// Shows existing name + ID with an Update button before
+// performing an update on an existing connection/datasource.
+// ================================================
+function showUpdateConfirmPopup({ entity, name, id, onConfirm }) {
+    const existing = document.getElementById('crm-update-confirm-overlay');
+    if (existing) existing.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'crm-update-confirm-overlay';
+    overlay.className = 'fixed inset-0 bg-black/40 flex items-center justify-center z-[60]';
+    overlay.innerHTML = `
+        <div class="bg-white rounded-xl shadow-xl max-w-sm w-full mx-4 p-6">
+            <div class="flex items-start gap-3 mb-4">
+                <div class="flex-shrink-0 w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center">
+                    <span class="text-amber-600 text-xl">&#9888;</span>
+                </div>
+                <div>
+                    <h3 class="text-sm font-bold text-slate-800">${entity} already exists</h3>
+                    <p class="text-xs text-slate-500 mt-1">This will update the existing ${entity.toLowerCase()} in CRM.</p>
+                </div>
+            </div>
+            <div class="bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 mb-5 text-xs">
+                <div class="flex justify-between py-0.5"><span class="text-slate-500">Name</span><span class="font-semibold text-slate-800">${name || '-'}</span></div>
+                <div class="flex justify-between py-0.5"><span class="text-slate-500">${entity} ID</span><span class="font-semibold text-slate-800">${(id !== null && id !== undefined) ? id : '-'}</span></div>
+            </div>
+            <div class="flex justify-end gap-2">
+                <button id="crm-update-cancel" class="text-xs font-bold text-[#006b8f] border border-[#006b8f] hover:bg-slate-100 px-5 py-2 rounded-full">Cancel</button>
+                <button id="crm-update-confirm" class="text-xs font-bold text-white bg-[#006b8f] hover:bg-[#005573] px-6 py-2 rounded-full shadow-sm">Update</button>
+            </div>
+        </div>`;
+    document.body.appendChild(overlay);
+
+    const close = () => overlay.remove();
+    document.getElementById('crm-update-cancel').onclick = close;
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+    document.getElementById('crm-update-confirm').onclick = () => { close(); onConfirm(); };
+}
+
+// Entry point for the Save button — checks for an existing connection first.
 async function saveApiConnection() {
+    const tp = currentData;
+    if (!tp) { alert("Touchpoint data not loaded."); return; }
+    try {
+        const resp = await fetch(`/api/crm/mashup/preview/${tp.id}`);
+        const data = await resp.json();
+        if (resp.ok && data.is_update && data.preview) {
+            showUpdateConfirmPopup({
+                entity: "Connection",
+                name: data.preview.NAME || data.api_name || "",
+                id: data.preview.CONNECTIONID,
+                onConfirm: executeApiConnectionPush
+            });
+            return;
+        }
+    } catch (e) { /* check failed — fall through to direct push */ }
+    executeApiConnectionPush();
+}
+
+// Entry point for the Finish button — checks for an existing datasource first.
+async function finishEdsConfiguration() {
+    const tp = currentData;
+    if (!tp) { alert("Touchpoint data not loaded."); return; }
+    const xslt = (document.getElementById('eds-xslt').value || "").trim();
+    if (!xslt) {
+        alert("XSLT has not been generated yet. Wait for the AI Agent to complete.");
+        return;
+    }
+    try {
+        const resp = await fetch(`/api/crm/datasource/check/${tp.id}`);
+        const data = await resp.json();
+        if (resp.ok && data.is_update) {
+            showUpdateConfirmPopup({
+                entity: "Datasource",
+                name: data.datasource_name || (document.getElementById('eds-name').value || "").trim(),
+                id: data.datasource_id,
+                onConfirm: executeEdsConfiguration
+            });
+            return;
+        }
+    } catch (e) { /* check failed — fall through to direct push */ }
+    executeEdsConfiguration();
+}
+
+async function executeApiConnectionPush() {
     const tp = currentData;
     if (!tp) {
         alert("Touchpoint data not loaded.");
@@ -1085,7 +1185,7 @@ async function saveApiConnection() {
 // Inserts MASHUPDATASOURCE into Oracle.
 // Idempotent: one touchpoint = one datasource row.
 // ================================================
-async function finishEdsConfiguration() {
+async function executeEdsConfiguration() {
     const tp = currentData;
     if (!tp) {
         alert("Touchpoint data not loaded.");
