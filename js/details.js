@@ -1058,12 +1058,12 @@ async function saveApiConnection() {
                 entity: "Connection",
                 name: data.preview.NAME || data.api_name || "",
                 id: data.preview.CONNECTIONID,
-                onConfirm: executeApiConnectionPush
+                onConfirm: () => executeApiConnectionPush(true)
             });
             return;
         }
     } catch (e) { /* check failed — fall through to direct push */ }
-    executeApiConnectionPush();
+    executeApiConnectionPush(false);
 }
 
 // Entry point for the Finish button — checks for an existing datasource first.
@@ -1083,15 +1083,15 @@ async function finishEdsConfiguration() {
                 entity: "Datasource",
                 name: data.datasource_name || (document.getElementById('eds-name').value || "").trim(),
                 id: data.datasource_id,
-                onConfirm: executeEdsConfiguration
+                onConfirm: () => executeEdsConfiguration(true)
             });
             return;
         }
     } catch (e) { /* check failed — fall through to direct push */ }
-    executeEdsConfiguration();
+    executeEdsConfiguration(false);
 }
 
-async function executeApiConnectionPush() {
+async function executeApiConnectionPush(isUpdate = false) {
     const tp = currentData;
     if (!tp) {
         alert("Touchpoint data not loaded.");
@@ -1107,7 +1107,7 @@ async function executeApiConnectionPush() {
     statusDiv.className = "text-xs font-medium px-4 py-2 " +
         "rounded-md w-full text-center max-w-md " +
         "bg-blue-50 text-blue-700";
-    statusDiv.textContent = "Step 1/2: Creating MASHUPCONNECTION...";
+    statusDiv.textContent = (isUpdate ? "Step 1/2: Updating" : "Step 1/2: Creating") + " MASHUPCONNECTION...";
     statusDiv.classList.remove('hidden');
 
     try {
@@ -1132,7 +1132,7 @@ async function executeApiConnectionPush() {
 
         // Step 2: MASHUPWSCONNECTION
         statusDiv.textContent =
-            "Step 2/2: Creating MASHUPWSCONNECTION...";
+            (isUpdate ? "Step 2/2: Updating" : "Step 2/2: Creating") + " MASHUPWSCONNECTION...";
 
         const wsResp = await fetch(
             `/api/crm/mashupws/insert/${tp.id}`,
@@ -1185,7 +1185,7 @@ async function executeApiConnectionPush() {
 // Inserts MASHUPDATASOURCE into Oracle.
 // Idempotent: one touchpoint = one datasource row.
 // ================================================
-async function executeEdsConfiguration() {
+async function executeEdsConfiguration(isUpdate = false) {
     const tp = currentData;
     if (!tp) {
         alert("Touchpoint data not loaded.");
@@ -1205,7 +1205,7 @@ async function executeEdsConfiguration() {
     // Disable immediately to prevent duplicate requests
     nextBtn.disabled = true;
     nextBtn.innerText = "Saving...";
-    statusText.innerText = "Inserting MASHUPDATASOURCE...";
+    statusText.innerText = (isUpdate ? "Updating" : "Creating") + " MASHUPDATASOURCE...";
     statusText.className = "text-xs text-blue-600 font-bold italic";
 
     // Gather form values
