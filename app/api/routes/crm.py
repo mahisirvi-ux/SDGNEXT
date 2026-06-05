@@ -191,15 +191,21 @@ def _resolve_connection_for_source(db, current_tp_id, source_system, uat_url, pr
         # Validate URL consistency (only compare when both sides have a value)
         if other_uat and uat_url and other_uat.lower() != uat_url.lower():
             return None, (
-                f"Source system '{source_system}' is already mapped to a different "
-                f"UAT URL ('{other_uat}'). A source system cannot have different URLs. "
-                f"Please align the URL or use a different source system name."
+                f"Source system '{source_system}' already has a connection using UAT URL "
+                f"'{other_uat}', but this touchpoint has '{uat_url}'. A source system can map "
+                f"to only one URL. To resolve, either:\n"
+                f"1. Change this touchpoint's UAT URL to '{other_uat}' — it will then use the "
+                f"existing connection; or\n"
+                f"2. Change the source system name — a new connection will be created for it."
             )
         if other_prod and prod_url and other_prod.lower() != prod_url.lower():
             return None, (
-                f"Source system '{source_system}' is already mapped to a different "
-                f"Prod URL ('{other_prod}'). A source system cannot have different URLs. "
-                f"Please align the URL or use a different source system name."
+                f"Source system '{source_system}' already has a connection using Prod URL "
+                f"'{other_prod}', but this touchpoint has '{prod_url}'. A source system can map "
+                f"to only one URL. To resolve, either:\n"
+                f"1. Change this touchpoint's Prod URL to '{other_prod}' — it will then use the "
+                f"existing connection; or\n"
+                f"2. Change the source system name — a new connection will be created for it."
             )
 
         # Same source system + consistent URL => reuse its connection if present
@@ -244,6 +250,24 @@ def _verify_connection_exists(cursor, schema, db_type, owner_id, connection_id) 
     sql, params = adapt_query(sql, {"owner": owner_id, "cid": connection_id}, db_type)
     cursor.execute(sql, params)
     return cursor.fetchone() is not None
+
+
+def _fetch_connection_details(cursor, schema, db_type, owner_id, connection_id):
+    """Fetch NAME + DESCRIPTION for an existing connection straight from CRM DB.
+
+    Used to DISPLAY an already-created connection (we never modify it).
+    Returns (name, description) or (None, None) if the row isn't found.
+    """
+    sql = (f"SELECT NAME, DESCRIPTION FROM {schema}.MASHUPCONNECTION "
+           f"WHERE OWNERID = :owner AND CONNECTIONID = :cid")
+    sql, params = adapt_query(sql, {"owner": owner_id, "cid": connection_id}, db_type)
+    cursor.execute(sql, params)
+    row = cursor.fetchone()
+    if not row:
+        return None, None
+    name = row[0] if row[0] is not None else ""
+    desc = row[1] if row[1] is not None else ""
+    return name, desc
 
 
 def _ds_row_exists(cursor, schema, db_type, owner_id, datasource_id: int) -> bool:
@@ -614,11 +638,17 @@ def crm_mashup_preview(tp_id: int, db: Session = Depends(get_db)):
             conn = get_crm_connection(db_type, crm_config)
             cursor = conn.cursor()
             if _verify_connection_exists(cursor, schema, db_type, owner_id, stored_cid):
+                # Existing connection — display the ACTUAL values from CRM DB.
+                fetched_name, fetched_desc = _fetch_connection_details(
+                    cursor, schema, db_type, owner_id, stored_cid
+                )
+                disp_name = fetched_name or conn_name
+                disp_desc = fetched_desc if fetched_desc is not None else conn_description
                 return {
                     "tp_id": tp_id, "tp_name": tp.name,
-                    "api_name": conn_name, "source_system": source_system,
-                    "is_update": True,
-                    "preview": _build_preview_dict(owner_id, stored_cid, conn_name, conn_description, True, db_type),
+                    "api_name": disp_name, "source_system": source_system,
+                    "is_update": True, "existing": True,
+                    "preview": _build_preview_dict(owner_id, stored_cid, disp_name, disp_desc, True, db_type),
                 }
         except HTTPException:
             raise
@@ -626,20 +656,34 @@ def crm_mashup_preview(tp_id: int, db: Session = Depends(get_db)):
             return {
                 "tp_id": tp_id, "tp_name": tp.name,
                 "api_name": conn_name, "source_system": source_system,
-                "is_update": True,
+                "is_update": True, "existing": True,
                 "preview": _build_preview_dict(owner_id, stored_cid, conn_name, conn_description, True, db_type),
             }
         finally:
             if conn:
                 conn.close()
 
-    # If a connection for this source system already exists, preview it as an update
+    # If a connection for this source system already exists, fetch + display it
     if shared_cid:
+        conn = None
+        try:
+            conn = get_crm_connection(db_type, crm_config)
+            cursor = conn.cursor()
+            fetched_name, fetched_desc = _fetch_connection_details(
+                cursor, schema, db_type, owner_id, shared_cid
+            )
+            disp_name = fetched_name or conn_name
+            disp_desc = fetched_desc if fetched_desc is not None else conn_description
+        except Exception:
+            disp_name, disp_desc = conn_name, conn_description
+        finally:
+            if conn:
+                conn.close()
         return {
             "tp_id": tp_id, "tp_name": tp.name,
-            "api_name": conn_name, "source_system": source_system,
-            "is_update": True, "shared": True,
-            "preview": _build_preview_dict(owner_id, shared_cid, conn_name, conn_description, True, db_type),
+            "api_name": disp_name, "source_system": source_system,
+            "is_update": True, "existing": True, "shared": True,
+            "preview": _build_preview_dict(owner_id, shared_cid, disp_name, disp_desc, True, db_type),
         }
 
     conn = None
@@ -710,28 +754,32 @@ def crm_mashup_insert(tp_id: int, db: Session = Depends(get_db)):
         candidate_cid = stored_cid or shared_cid
 
         if candidate_cid and _verify_connection_exists(cursor, schema, db_type, owner_id, candidate_cid):
-            # Connection already exists in CRM — UPDATE in place.
-            # Never delete: a datasource may reference it via FK.
+            # Connection already exists in CRM — DO NOT modify it.
+            # Fetch its details and link this touchpoint to it.
             connection_id = candidate_cid
-            is_update = True
-            _do_connection_update(cursor, schema, db_type, owner_id, connection_id, conn_name, conn_description)
+            existing = True
+            fetched_name, fetched_desc = _fetch_connection_details(
+                cursor, schema, db_type, owner_id, connection_id
+            )
+            conn_name = fetched_name or conn_name
+            conn_description = fetched_desc if fetched_desc is not None else conn_description
 
         elif candidate_cid:
-            # We have a stored/shared ID but the row is missing in CRM — insert with that ID.
+            # We have a stored/shared ID but the row is missing in CRM — create with that ID.
             connection_id = candidate_cid
-            is_update = False
+            existing = False
             _do_insert(cursor, schema, db_type, owner_id, connection_id, conn_name, conn_description)
 
         else:
-            # Brand new connection — allocate the next ID.
-            is_update = False
+            # Brand new connection — allocate the next ID and create.
+            existing = False
             connection_id = atomic_increment(cursor, schema, db_type, owner_id, ITEM_ID)
             _do_insert(cursor, schema, db_type, owner_id, connection_id, conn_name, conn_description)
 
         conn.commit()
         _save_connection_id(db, tech, connection_id)
 
-        action = "updated" if is_update else "created"
+        action = "linked (existing)" if existing else "created"
         reused = " (shared by source system)" if (shared_cid and not stored_cid) else ""
         db.add(IDRActionLog(
             touchpoint_id=tp_id, action_type="Manual Update", action_by="User",
@@ -741,12 +789,19 @@ def crm_mashup_insert(tp_id: int, db: Session = Depends(get_db)):
 
         return {
             "success": True, "connection_id": connection_id,
-            "name": conn_name, "source_system": source_system,
-            "is_update": is_update, "shared": bool(shared_cid and not stored_cid),
+            "name": conn_name, "description": conn_description,
+            "source_system": source_system,
+            "existing": existing,
+            "is_update": existing,   # kept for frontend compatibility
+            "shared": bool(shared_cid and not stored_cid),
             "message": (
-                f"MASHUPCONNECTION {'updated' if is_update else 'created'} successfully "
-                f"for source system '{conn_name}'. CONNECTIONID = {connection_id}"
-                + (" (reused existing connection for this source system)" if (shared_cid and not stored_cid) else "")
+                f"Connection already exists in CRM (ID {connection_id}); "
+                f"details fetched and linked — not modified."
+                if existing else
+                f"MASHUPCONNECTION created successfully for source system "
+                f"'{conn_name}'. CONNECTIONID = {connection_id}"
+                + (" (reused existing connection for this source system)"
+                   if (shared_cid and not stored_cid) else "")
             ),
         }
     except HTTPException:
@@ -852,17 +907,16 @@ def crm_mashupws_insert(tp_id: int, db: Session = Depends(get_db)):
         conn = get_crm_connection(db_type, crm_config)
         cursor = conn.cursor()
 
-        is_update = _ws_row_exists(cursor, schema, db_type, owner_id, stored_cid)
-        if is_update:
-            # UPDATE in place — no delete needed.
-            _do_ws_update(cursor, schema, db_type, owner_id, stored_cid,
-                          conn_name, service_xml, request_header_key_xml)
+        existing = _ws_row_exists(cursor, schema, db_type, owner_id, stored_cid)
+        if existing:
+            # WS connection already exists — DO NOT modify it.
+            pass
         else:
             _do_ws_insert(cursor, schema, db_type, owner_id, stored_cid, conn_name,
                           service_location, service_xml, request_header_key_xml)
         conn.commit()
 
-        action = "updated" if is_update else "created"
+        action = "linked (existing)" if existing else "created"
         db.add(IDRActionLog(
             touchpoint_id=tp_id, action_type="Manual Update", action_by="User",
             comment=f"CRM MASHUPWSCONNECTION {action}. CONNECTIONID={stored_cid}",
@@ -870,8 +924,13 @@ def crm_mashupws_insert(tp_id: int, db: Session = Depends(get_db)):
         db.commit()
 
         return {
-            "success": True, "connection_id": stored_cid, "is_update": is_update,
-            "message": f"MASHUPWSCONNECTION {'updated' if is_update else 'created'} successfully. CONNECTIONID = {stored_cid}",
+            "success": True, "connection_id": stored_cid,
+            "existing": existing, "is_update": existing,
+            "message": (
+                f"WS connection already exists in CRM (CONNECTIONID = {stored_cid}); not modified."
+                if existing else
+                f"MASHUPWSCONNECTION created successfully. CONNECTIONID = {stored_cid}"
+            ),
         }
     except HTTPException:
         raise

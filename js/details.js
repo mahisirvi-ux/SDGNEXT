@@ -786,7 +786,12 @@ async function startConnectionAnimation() {
     try {
         const pvResp = await fetch(`/api/crm/mashup/preview/${tp.id}`);
         const pv = await pvResp.json();
-        if (pvResp.ok && pv.preview) {
+        if (!pvResp.ok) {
+            closeConfiguratorModal();
+            showConflictPopup(pv.detail || "Cannot open connection configuration.");
+            return;
+        }
+        if (pv.preview) {
             targetName = pv.preview.NAME || targetName;
             targetDesc = pv.preview.DESCRIPTION || '';
         }
@@ -1011,7 +1016,38 @@ function edsSwitchTab(direction) {
 // Shows existing name + ID with an Update button before
 // performing an update on an existing connection/datasource.
 // ================================================
-function showUpdateConfirmPopup({ entity, name, id, onConfirm }) {
+// Informational popup for a source-system / URL conflict.
+function showConflictPopup(message) {
+    const ex = document.getElementById('crm-conflict-overlay');
+    if (ex) ex.remove();
+    const overlay = document.createElement('div');
+    overlay.id = 'crm-conflict-overlay';
+    overlay.className = 'fixed inset-0 bg-black/40 flex items-center justify-center z-[60]';
+    overlay.innerHTML = `
+        <div class="bg-white rounded-xl shadow-xl max-w-md w-full mx-4 p-6">
+            <div class="flex items-start gap-3 mb-4">
+                <div class="flex-shrink-0 w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
+                    <span class="text-red-600 text-xl">&#9888;</span>
+                </div>
+                <div>
+                    <h3 class="text-sm font-bold text-slate-800">Source system / URL conflict</h3>
+                    <p class="text-xs text-slate-500 mt-1">This connection cannot be created as-is.</p>
+                </div>
+            </div>
+            <div class="bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 mb-5 text-xs text-slate-700" style="white-space: pre-line;">${message}</div>
+            <div class="flex justify-end">
+                <button id="crm-conflict-ok" class="text-xs font-bold text-white bg-[#006b8f] hover:bg-[#005573] px-6 py-2 rounded-full shadow-sm">Got it</button>
+            </div>
+        </div>`;
+    document.body.appendChild(overlay);
+    const close = () => overlay.remove();
+    document.getElementById('crm-conflict-ok').onclick = close;
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+}
+
+function showUpdateConfirmPopup({ entity, name, id, onConfirm, subtitle, confirmLabel }) {
+    subtitle = subtitle || ('This will update the existing ' + entity.toLowerCase() + ' in CRM.');
+    confirmLabel = confirmLabel || 'Update';
     const existing = document.getElementById('crm-update-confirm-overlay');
     if (existing) existing.remove();
 
@@ -1026,7 +1062,7 @@ function showUpdateConfirmPopup({ entity, name, id, onConfirm }) {
                 </div>
                 <div>
                     <h3 class="text-sm font-bold text-slate-800">${entity} already exists</h3>
-                    <p class="text-xs text-slate-500 mt-1">This will update the existing ${entity.toLowerCase()} in CRM.</p>
+                    <p class="text-xs text-slate-500 mt-1">${subtitle}</p>
                 </div>
             </div>
             <div class="bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 mb-5 text-xs">
@@ -1035,7 +1071,7 @@ function showUpdateConfirmPopup({ entity, name, id, onConfirm }) {
             </div>
             <div class="flex justify-end gap-2">
                 <button id="crm-update-cancel" class="text-xs font-bold text-[#006b8f] border border-[#006b8f] hover:bg-slate-100 px-5 py-2 rounded-full">Cancel</button>
-                <button id="crm-update-confirm" class="text-xs font-bold text-white bg-[#006b8f] hover:bg-[#005573] px-6 py-2 rounded-full shadow-sm">Update</button>
+                <button id="crm-update-confirm" class="text-xs font-bold text-white bg-[#006b8f] hover:bg-[#005573] px-6 py-2 rounded-full shadow-sm">${confirmLabel}</button>
             </div>
         </div>`;
     document.body.appendChild(overlay);
@@ -1053,11 +1089,17 @@ async function saveApiConnection() {
     try {
         const resp = await fetch(`/api/crm/mashup/preview/${tp.id}`);
         const data = await resp.json();
-        if (resp.ok && data.is_update && data.preview) {
+        if (!resp.ok) {
+            showConflictPopup(data.detail || "Cannot create connection.");
+            return;
+        }
+        if (data.is_update && data.preview) {
             showUpdateConfirmPopup({
                 entity: "Connection",
                 name: data.preview.NAME || data.api_name || "",
                 id: data.preview.CONNECTIONID,
+                subtitle: "This connection already exists in CRM and will not be modified. It will be linked to this touchpoint.",
+                confirmLabel: "Use Existing",
                 onConfirm: () => executeApiConnectionPush(true)
             });
             return;
@@ -1107,7 +1149,7 @@ async function executeApiConnectionPush(isUpdate = false) {
     statusDiv.className = "text-xs font-medium px-4 py-2 " +
         "rounded-md w-full text-center max-w-md " +
         "bg-blue-50 text-blue-700";
-    statusDiv.textContent = (isUpdate ? "Step 1/2: Updating" : "Step 1/2: Creating") + " MASHUPCONNECTION...";
+    statusDiv.textContent = (isUpdate ? "Step 1/2: Linking existing" : "Step 1/2: Creating") + " MASHUPCONNECTION...";
     statusDiv.classList.remove('hidden');
 
     try {
@@ -1126,13 +1168,12 @@ async function executeApiConnectionPush(isUpdate = false) {
             );
         }
 
-        const connAction = connData.is_update
-            ? "updated" : "created";
+        const connAction = connData.existing ? "linked (existing)" : "created";
         const connectionId = connData.connection_id;
 
         // Step 2: MASHUPWSCONNECTION
         statusDiv.textContent =
-            (isUpdate ? "Step 2/2: Updating" : "Step 2/2: Creating") + " MASHUPWSCONNECTION...";
+            (isUpdate ? "Step 2/2: Linking existing" : "Step 2/2: Creating") + " MASHUPWSCONNECTION...";
 
         const wsResp = await fetch(
             `/api/crm/mashupws/insert/${tp.id}`,
@@ -1148,8 +1189,7 @@ async function executeApiConnectionPush(isUpdate = false) {
             );
         }
 
-        const wsAction = wsData.is_update
-            ? "updated" : "created";
+        const wsAction = wsData.existing ? "linked (existing)" : "created";
 
         // Success state
         statusDiv.className = "text-xs font-medium px-4 py-2 " +
