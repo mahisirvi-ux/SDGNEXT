@@ -200,7 +200,7 @@ def _run_invites(db, project_id):
         IDRTechnical.start_date >= tomorrow_start,
         IDRTechnical.start_date < day_after_start,
         IDRTechnical.tech_status.notin_(
-            ["Completed", "Document Review", "Pending Document"]
+            ["Completed", "rgt review", "Pending Document"]
         )
     ).order_by(IDRTechnical.start_date.asc()).all()
 
@@ -456,7 +456,7 @@ def _send_tp_email(db, project_id, project_name, tp, tech, item,
         IDRTechnical.touchpoint_id == tp.id
     ).first()
     if (tech_rec and tech_rec.tech_status not in
-            ["Completed", "Document Review", "Pending Document"]):
+            ["Completed", "rgt review", "Pending Document"]):
         tech_rec.tech_status = "Scheduled"
 
     comment = (

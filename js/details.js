@@ -72,10 +72,10 @@ function populatePage(tp) {
         document.querySelectorAll('.nav-project-link').forEach(a => a.href = projectUrl);
     }
 
-        // Header
+    // Header
     document.getElementById('fd-name').innerText = tp.name;
 
-        // Populate project name pill and breadcrumb links
+    // Populate project name pill and breadcrumb links
     const projectName = tp.project_name || "Project";
     const projectId = tp.project_id;
     const projNameEl = document.getElementById('fd-project-name');
@@ -90,12 +90,19 @@ function populatePage(tp) {
     }
 
     // Key Info Strip
-        document.getElementById('fd-strip-module').innerText = tp.module || '-';
+    document.getElementById('fd-strip-module').innerText = tp.module || '-';
     document.getElementById('fd-strip-source').innerText = tp.source || '-';
+    
+    // Populate the new editable Source System field in Basic Info
+    const srcInput = document.getElementById('fd-source-system');
+    if (srcInput) {
+        srcInput.value = tp.source || '';
+    }
+
     document.getElementById('fd-strip-target').innerText = tp.target || '-';
     document.getElementById('fd-strip-integration').innerText = (tp.integration || 'Unassigned').toUpperCase();
 
-        // Basic Info: Profile fields
+    // Basic Info: Profile fields
     document.getElementById('fd-val-flow').innerText = tp.business_flow || '-';
 
     // Owner fields with department displayed below
@@ -144,7 +151,7 @@ function populatePage(tp) {
     setVal('fd-effort', td.effort || "");
     setVal('fd-attendees', td.attendees || "");
 
-        // Status & Pending With
+    // Status & Pending With
     setVal('fd-tech-status', tp.techStatus || "Pending Workshop");
     setVal('fd-pending-with', tp.pendingWith || td.pendingWith || "");
 
@@ -152,46 +159,55 @@ function populatePage(tp) {
     const wsStatus = determineWorkshopStage(tp);
     updateWorkshopTimeline(wsStatus, tp);
 
-        // Show/hide Generate WUD and Generate Mock buttons based on Completed status
-        const isCompleted = (tp.techStatus || '').toLowerCase() === 'completed';
-        const generateBtn = document.getElementById('fd-btn-generate');
-        if (generateBtn) {
-            if (isCompleted) {
-                generateBtn.classList.remove('hidden');
-                generateBtn.style.display = 'flex';
-            } else {
-                generateBtn.classList.add('hidden');
-                generateBtn.style.display = '';
-            }
+    // ==========================================
+    // Show/hide Dynamic Action Buttons
+    // ==========================================
+    const techStatusLower = (tp.techStatus || '').toLowerCase();
+    
+    // Define exact states
+    const isRgtReview = techStatusLower === 'rgt review';
+    const isCompleted = techStatusLower === 'completed';
+    const isApi = (tp.integration || '').toLowerCase() === 'api';
+    
+    // 1. Generate WUD Button Logic (ONLY on 'rgt review')
+    const generateBtn = document.getElementById('fd-btn-generate');
+    if (generateBtn) {
+        if (isRgtReview) {
+            generateBtn.classList.remove('hidden');
+            generateBtn.style.display = 'flex';
+        } else {
+            generateBtn.classList.add('hidden');
+            generateBtn.style.display = 'none';
         }
-        const mockBtn = document.getElementById('fd-btn-generate-mock');
-        if (mockBtn) {
-            if (isCompleted) {
-                mockBtn.classList.remove('hidden');
-                mockBtn.style.display = 'flex';
-            } else {
-                mockBtn.classList.add('hidden');
-                mockBtn.style.display = '';
-            }
+    }
+    
+    // 2. Generate Mock Button Logic (ONLY on 'completed')
+    const mockBtn = document.getElementById('fd-btn-generate-mock');
+    if (mockBtn) {
+        if (isCompleted) {
+            mockBtn.classList.remove('hidden');
+            mockBtn.style.display = 'flex';
+        } else {
+            mockBtn.classList.add('hidden');
+            mockBtn.style.display = 'none';
         }
-                  
-        // NEW CODE: Configurator Button Logic
-        const isApi = (tp.integration || '').toLowerCase() === 'api';
-        const isDocReview =['document review', 'completed'].includes((tp.techStatus || '').toLowerCase());
-        const configBtn = document.getElementById('fd-btn-configurator');
-        
-        if (configBtn) {
-            if (isApi && isDocReview) {
-                configBtn.classList.remove('hidden');
-                configBtn.style.display = 'flex';
-            } else {
-                configBtn.classList.add('hidden');
-                configBtn.style.display = '';
-            }
+    }
+              
+    // 3. Configurator Button Logic (ONLY on 'completed' and 'API')
+    const configBtn = document.getElementById('fd-btn-configurator');
+    if (configBtn) {
+        if (isApi && isCompleted) {
+            configBtn.classList.remove('hidden');
+            configBtn.style.display = 'flex';
+        } else {
+            configBtn.classList.add('hidden');
+            configBtn.style.display = 'none';
         }
+    }
+    // ==========================================
 
-        // Load attachments
-        loadDocuments(tp.id);
+    // Load attachments
+    loadDocuments(tp.id);
 
     // API fields (only set if element exists)
     const intType = (tp.integration || "").toLowerCase();
@@ -317,6 +333,7 @@ async function saveFullDetails() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 integration: currentData.integration,
+                source: getVal('fd-source-system') || currentData.source,
                 start: combineDT('fd-start', 'fd-start-time'),
                 end: combineDT('fd-end', 'fd-end-time'),
                 status: getVal('fd-tech-status') || currentData.techStatus,
@@ -389,15 +406,16 @@ function determineWorkshopStage(tp) {
     // 2. RGT Shared
     // 3. In Progress (start_date <= today)
     // 4. Discussion Completed (manual: Pending Document status)
-    // 5. Document Review (bank replied with filled RGT)
-    // 6. Completed (manual post document review)
+    // 5. rgt review (bank replied with filled RGT)
+    // 6. Completed (manual post rgt review)
 
     if (techStatus === 'completed') return 6;
-    if (techStatus === 'document review') return 5;
-    if (techStatus === 'pending document') return 4;
-    if (techStatus === 'in progress') return 3;
-    if (rgtShared) return 2;
-    if (hasSchedule) return 1;
+    if (techStatus === 'wud generation') return 5; // New status
+    if (techStatus === 'rgt review') return 4;     // Renamed status
+    if (techStatus === 'pending document') return 3;
+    if (techStatus === 'in progress') return 2;
+    if (rgtShared) return 1;
+    if (hasSchedule) return 0;
     return 0;
 }
 
@@ -1000,7 +1018,54 @@ function edsShowTab(tabNum) {
     }
 }
 
-function edsSwitchTab(direction) {
+// 1. Make the function async
+async function edsSwitchTab(direction) {
+    const tpId = document.getElementById('fd-id').value; // Get current touchpoint ID
+
+    // =====================================================================
+    // SCENARIO: Check for conflict when moving forward (e.g., Tab 1 -> Tab 2)
+    // or when clicking "Save" on the final tab.
+    // =====================================================================
+    if (currentEdsTab === 1 && direction === 1) { 
+        // Example: Moving from Tab 1 to Tab 2
+        
+        try {
+            // (Optional) Disable button while checking
+            const btn = document.getElementById('eds-next-btn');
+            btn.disabled = true;
+            btn.innerText = "Checking...";
+
+            // Make your preview or save request here
+            const res = await fetch(`/api/crm/mashup/preview/${tpId}`); 
+            
+            // ⭐️ CATCH THE 409 CONFLICT HERE ⭐️
+            if (res.status === 409) {
+                const data = await res.json();
+                handleSourceSystemConflict(tpId, data); // Call the prompt function!
+                
+                // Reset button and STOP the tab switch
+                btn.disabled = false;
+                btn.innerText = "Next Step";
+                return; 
+            }
+
+            if (!res.ok) throw new Error("Failed to validate connection.");
+            
+            // If it succeeds, reset button and let the code continue down below
+            btn.disabled = false;
+            btn.innerText = "Next Step";
+
+        } catch (err) {
+            alert(err.message);
+            document.getElementById('eds-next-btn').disabled = false;
+            document.getElementById('eds-next-btn').innerText = "Next Step";
+            return; // Stop tab switch on error
+        }
+    }
+
+    // =====================================================================
+    // Normal Navigation (if no conflict was found)
+    // =====================================================================
     let newTab = currentEdsTab + direction;
     if (newTab >= 1 && newTab <= 3) {
         edsShowTab(newTab);
@@ -1098,7 +1163,7 @@ async function saveApiConnection() {
                 entity: "Connection",
                 name: data.preview.NAME || data.api_name || "",
                 id: data.preview.CONNECTIONID,
-                subtitle: "This connection already exists in CRM and will not be modified. It will be linked to this touchpoint.",
+                subtitle: "This connection already exists in CRM. You can click 'Use Existing' to link it, or click 'Cancel' and change the Source System name in the Basic Info section.",
                 confirmLabel: "Use Existing",
                 onConfirm: () => executeApiConnectionPush(true)
             });
@@ -1156,8 +1221,10 @@ async function executeApiConnectionPush(isUpdate = false) {
         // Step 1: MASHUPCONNECTION
         const connResp = await fetch(
             `/api/crm/mashup/insert/${tp.id}`,
-            { method: "POST",
-              headers: { "Content-Type": "application/json" } }
+            { 
+                method: "POST",
+                body: JSON.stringify({}) // <-- Added here
+            }
         );
         const connData = await connResp.json();
 
@@ -1177,8 +1244,10 @@ async function executeApiConnectionPush(isUpdate = false) {
 
         const wsResp = await fetch(
             `/api/crm/mashupws/insert/${tp.id}`,
-            { method: "POST",
-              headers: { "Content-Type": "application/json" } }
+            { 
+                method: "POST",
+                body: JSON.stringify({}) // <-- Added here
+            }
         );
         const wsData = await wsResp.json();
 
@@ -1304,5 +1373,59 @@ async function executeEdsConfiguration(isUpdate = false) {
         statusText.innerText = "\u2717 " + err.message;
         nextBtn.disabled = false;
         nextBtn.innerText = "Finish Configuration";
+    }
+}
+
+// In js/details.js (inside your EDS configuration initialization function)
+
+async function loadEDSPreview(tpId) {
+    try {
+        const res = await fetch(`/api/crm/mashup/preview/${tpId}`);
+        
+        // Catch the conflict
+        if (res.status === 409) {
+            const data = await res.json();
+            handleSourceSystemConflict(tpId, data);
+            return; 
+        }
+        
+        if (!res.ok) throw new Error("Failed to load preview");
+        
+        const data = await res.json();
+        // ... proceed with rendering your normal EDS preview UI ...
+
+    } catch (err) {
+        alert("Error loading connection preview: " + err.message);
+    }
+}
+
+// The Conflict Handler
+async function handleSourceSystemConflict(tpId, data) {
+    // Show the popup with the backend error message, asking for a new name
+    const newSystem = window.prompt(
+        data.message + "\n\nIf you want to create a new, separate connection, please enter a NEW Source System name below:",
+        data.current_source_system
+    );
+
+    // If the user entered a new name and clicked OK
+    if (newSystem && newSystem.trim() !== data.current_source_system.trim()) {
+        try {
+            const updateRes = await fetch(`/api/crm/touchpoints/${tpId}/source-system`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ new_source_system: newSystem.trim() })
+            });
+            
+            if (updateRes.ok) {
+                // Successfully renamed! Re-trigger the preview automatically.
+                loadEDSPreview(tpId);
+            } else {
+                alert("Failed to update Source System name.");
+            }
+        } catch (err) {
+            alert("Network error while updating.");
+        }
+    } else if (newSystem === data.current_source_system) {
+        alert("Source System name was not changed. You must use a different name to create a new connection.");
     }
 }

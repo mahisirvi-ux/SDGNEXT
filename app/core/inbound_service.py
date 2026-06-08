@@ -20,7 +20,7 @@ def sync_bank_replies():
     """Reads the Outlook inbox via Microsoft Graph, finds unread
     replies containing a WUD-ID, extracts the .docx attachment,
     saves it, parses specs, updates technical_details, and
-    transitions status to 'Document Review'.
+    transitions status to 'rgt review'.
 
     Replaces the legacy Gmail IMAP transport. Uses the same Graph
     app registration as outbound mail. Needs Mail.ReadWrite
@@ -254,8 +254,8 @@ def sync_bank_replies():
                     results["processed"].append(wud_id)
 
                 elif completion_pct == 100:
-                    # === 100% FILLED: All done — Document Review ===
-                    print(f"[Inbox Sync] WUD-ID {wud_id}: 100% filled — moving to Document Review")
+                    # === 100% FILLED: All done — rgt review ===
+                    print(f"[Inbox Sync] WUD-ID {wud_id}: 100% filled — moving to rgt review")
 
                     if tech_record:
                         current_details = dict(tech_record.technical_details or {})
@@ -267,14 +267,14 @@ def sync_bank_replies():
                         flag_modified(tech_record, "technical_details")
 
                         old_status = tech_record.tech_status
-                        tech_record.tech_status = "Document Review"
+                        tech_record.tech_status = "rgt review"
                         tech_record.pending_with = tech_owner
 
                         log = IDRActionLog(
                             touchpoint_id=wud_id,
                             action_type="STATUS_CHANGE",
                             action_by="System (Inbox Sync)",
-                            comment=(f"Status: {old_status} -> Document Review. "
+                            comment=(f"Status: {old_status} -> rgt review. "
                                      f"RGT 100% complete. Document from {sender}. "
                                      f"Pending with: {tech_owner}.")
                         )

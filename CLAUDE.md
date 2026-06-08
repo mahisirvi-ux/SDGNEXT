@@ -102,7 +102,7 @@
   Function: `send_mom_pointer_nudges()`.
 - **Workshop invites (manual trigger):** Project-scoped. The 'Send Workshop
   Invites' button sends emails ONLY for the current project's touchpoints
-  scheduled for tomorrow with `tech_status` not in (Completed, Document Review,
+  scheduled for tomorrow with `tech_status` not in (Completed, rgt review,
   Pending Document). Reschedule detection uses `WORKSHOP_INVITE_SENT` action
   log entries to track prior sends per touchpoint. Same-date re-triggers are
   skipped; status="Rescheduled" triggers a resend with a yellow body banner.

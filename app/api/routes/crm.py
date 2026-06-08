@@ -9,6 +9,8 @@ Existing Oracle projects fall back to ORACLE_* env vars + OWNERID 914.
 
 import re
 from fastapi import APIRouter, Depends, HTTPException, Body
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
 from app.core.database import get_db
@@ -29,7 +31,7 @@ DEFAULT_OWNER_ID = 914      # legacy default (Oracle deployments)
 ITEM_ID = 1                 # MashupIdList ITEMID for CONNECTIONID
 DS_ITEM_ID = 2              # MashupIdList ITEMID for DATASOURCEID
 FIELD_ITEM_ID = 3           # MashupIdList ITEMID for FIELDID
-MOCK_SERVICE_LOCATION = "http://127.0.0.1:8000/mock-api"
+MOCK_SERVICE_LOCATION = "http://172.18.33.12/mock-api"
 
 
 # ============================================================
@@ -159,63 +161,34 @@ def _get_source_system(tech, func):
 
 
 def _resolve_connection_for_source(db, current_tp_id, source_system, uat_url, prod_url):
-    """Group connections by Source System.
-
-    CRM model: one connection per source system (same base URL), many EDS
-    (one per method) under it. This scans sibling touchpoints sharing the
-    same source system and:
-      - validates their base URLs match (a source system must map to ONE URL)
-      - returns an existing connection id to reuse if one was already created
-
-    Returns: (shared_connection_id_or_None, error_message_or_None)
+    """
+    If a sibling uses the exact same source system name, return its connection ID 
+    so the UI can prompt the user to 'Use Existing'. If they want a new connection, 
+    they must manually change the source system name in the UI.
     """
     if not source_system:
-        # No source system => cannot group; treat as standalone (no reuse, no validation)
-        return None, None
+        return None, source_system
 
     src_lower = source_system.lower()
-    shared_cid = None
-
     siblings = db.query(IDRTechnical).filter(
         IDRTechnical.touchpoint_id != current_tp_id
     ).all()
 
     for other in siblings:
-        if (getattr(other, "source_system", "") or "").strip().lower() != src_lower:
-            continue
+        other_src = (getattr(other, "source_system", "") or "").strip()
+        
+        # If the Source System name matches, trigger the "Existing Connection" flow
+        if other_src.lower() == src_lower:
+            td = other.technical_details if isinstance(other.technical_details, dict) else {}
+            other_cid = td.get("crmConnectionId")
+            
+            if other_cid is not None:
+                try:
+                    return int(other_cid), source_system
+                except (ValueError, TypeError):
+                    pass
 
-        td = other.technical_details if isinstance(other.technical_details, dict) else {}
-        other_uat = (td.get("uatUrl") or "").strip()
-        other_prod = (td.get("prodUrl") or "").strip()
-
-        # Validate URL consistency (only compare when both sides have a value)
-        if other_uat and uat_url and other_uat.lower() != uat_url.lower():
-            return None, (
-                f"Source system '{source_system}' already has a connection using UAT URL "
-                f"'{other_uat}', but this touchpoint has '{uat_url}'. A source system can map "
-                f"to only one URL. To resolve, either:\n"
-                f"1. Change this touchpoint's UAT URL to '{other_uat}' — it will then use the "
-                f"existing connection; or\n"
-                f"2. Change the source system name — a new connection will be created for it."
-            )
-        if other_prod and prod_url and other_prod.lower() != prod_url.lower():
-            return None, (
-                f"Source system '{source_system}' already has a connection using Prod URL "
-                f"'{other_prod}', but this touchpoint has '{prod_url}'. A source system can map "
-                f"to only one URL. To resolve, either:\n"
-                f"1. Change this touchpoint's Prod URL to '{other_prod}' — it will then use the "
-                f"existing connection; or\n"
-                f"2. Change the source system name — a new connection will be created for it."
-            )
-
-        # Same source system + consistent URL => reuse its connection if present
-        if shared_cid is None and td.get("crmConnectionId") is not None:
-            try:
-                shared_cid = int(td["crmConnectionId"])
-            except (ValueError, TypeError):
-                pass
-
-    return shared_cid, None
+    return None, source_system
 
 
 def _get_stored_datasource_id(tech):
@@ -629,9 +602,10 @@ def crm_mashup_preview(tp_id: int, db: Session = Depends(get_db)):
         shared_cid, conflict = _resolve_connection_for_source(
             db, tp_id, source_system, uat_url, prod_url
         )
-        if conflict:
-            raise HTTPException(status_code=400, detail=conflict)
+        source_system = conflict
 
+    # Build the name using the new auto-incremented source system
+    conn_name, conn_description = _build_connection_naming(project_short, source_system, api_name)
     if stored_cid:
         conn = None
         try:
@@ -743,8 +717,7 @@ def crm_mashup_insert(tp_id: int, db: Session = Depends(get_db)):
         shared_cid, conflict = _resolve_connection_for_source(
             db, tp_id, source_system, uat_url, prod_url
         )
-        if conflict:
-            raise HTTPException(status_code=400, detail=conflict)
+        source_system = conflict
 
     conn = None
     try:
@@ -853,6 +826,10 @@ def crm_mashupws_preview(tp_id: int, db: Session = Depends(get_db)):
         conn = get_crm_connection(db_type, crm_config)
         cursor = conn.cursor()
         is_update = _ws_row_exists(cursor, schema, db_type, owner_id, stored_cid)
+
+        fetched_name, _ = _fetch_connection_details(cursor, schema, db_type, owner_id, stored_cid)
+        if fetched_name:
+            conn_name = fetched_name
     except Exception:
         pass
     finally:
@@ -906,6 +883,10 @@ def crm_mashupws_insert(tp_id: int, db: Session = Depends(get_db)):
     try:
         conn = get_crm_connection(db_type, crm_config)
         cursor = conn.cursor()
+
+        fetched_name, _ = _fetch_connection_details(cursor, schema, db_type, owner_id, stored_cid)
+        if fetched_name:
+            conn_name = fetched_name
 
         existing = _ws_row_exists(cursor, schema, db_type, owner_id, stored_cid)
         if existing:
@@ -1145,3 +1126,20 @@ def crm_datasource_insert(
     finally:
         if conn:
             conn.close()
+
+# Add this new route to allow on-the-fly renaming
+class SourceSystemUpdate(BaseModel):
+    new_source_system: str
+
+@router.put("/api/crm/touchpoints/{tp_id}/source-system")
+def update_source_system(tp_id: int, payload: SourceSystemUpdate, db: Session = Depends(get_db)):
+    """Updates the source system on the fly to resolve connection conflicts."""
+    tp, tech, func = _get_tp_data(tp_id, db)
+    
+    if func:
+        func.source_system = payload.new_source_system
+    if tech:
+        tech.source_system = payload.new_source_system
+        
+    db.commit()
+    return {"success": True, "source_system": payload.new_source_system}

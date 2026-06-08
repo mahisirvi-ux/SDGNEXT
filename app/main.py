@@ -214,7 +214,7 @@ def get_phase2_dashboard(request: Request):
             tech_status = tech.tech_status if tech and tech.tech_status else "Auto"
 
                         # Preserve manually set statuses
-            manual_statuses = ["Completed", "Rescheduled", "Pending Document", "Document Review", "In Progress"]
+            manual_statuses = ["Completed", "Rescheduled", "Pending Document", "rgt review", "In Progress"]
             
             if tech_status in manual_statuses:
                 pass  # Keep as-is
@@ -246,7 +246,7 @@ def get_phase2_dashboard(request: Request):
                 status_class = "bg-purple-100 text-purple-700 border-purple-200"
             elif tech_status == "Pending Document":
                 status_class = "bg-orange-100 text-orange-700 border-orange-200"
-            elif tech_status == "Document Review":
+            elif tech_status == "rgt review":
                 status_class = "bg-indigo-100 text-indigo-700 border-indigo-200"
 
             # Serialize datetimes as 'YYYY-MM-DD HH:MM' for the frontend.
@@ -275,11 +275,12 @@ def get_phase2_dashboard(request: Request):
 
 @app.put("/api/phase2/update/{touchpoint_id}")
 async def update_tech_idr(touchpoint_id: int, request: Request):
-    """Saves the Integration Type, Dates+Times, and Manual Status Overrides."""
+    """Saves the Integration Type, Dates+Times, Source System, and Manual Status Overrides."""
     db = SessionLocal()
     try:
         data = await request.json()
         tech = db.query(IDRTechnical).filter(IDRTechnical.touchpoint_id == touchpoint_id).first()
+        func = db.query(IDRFunctional).filter(IDRFunctional.touchpoint_id == touchpoint_id).first() # <-- Added Functional Query
 
         # Parse start/end. Accepted formats:
         #   "YYYY-MM-DD HH:MM"   (preferred, what FE now sends)
@@ -299,10 +300,37 @@ async def update_tech_idr(touchpoint_id: int, request: Request):
 
         clean_start = parse_dt(data.get("start"))
         clean_end = parse_dt(data.get("end"))
+
+        # --- NEW: Update Source System ---
+        new_source = data.get("source")
+        if new_source is not None:
+            new_source_clean = new_source.strip()
+            
+            # 1. Check if the user is actually changing the name
+            old_source = getattr(func, "source_system", "") if func else ""
+            
+            if old_source != new_source_clean:
+                # 2. It changed! Unlink the old Connection & Datasource IDs
+                if tech and tech.technical_details:
+                    current_td = dict(tech.technical_details)
+                    
+                    # Remove the locked IDs so the CRM generates new ones
+                    current_td.pop("crmConnectionId", None)
+                    current_td.pop("crmDatasourceId", None)
+                    
+                    tech.technical_details = current_td
+                    from sqlalchemy.orm.attributes import flag_modified
+                    flag_modified(tech, "technical_details")
+
+            # 3. Save the new name
+            if func:
+                func.source_system = new_source_clean
+            if tech and hasattr(tech, "source_system"):
+                tech.source_system = new_source_clean
         
         # Accept manual status overrides for workflow-controlled statuses
         incoming_status = data.get("status", "Auto")
-        allowed_manual = ["Completed", "Rescheduled", "Pending Document", "Document Review", "Pending Workshop", "In Progress"]
+        allowed_manual = ["Completed", "Rescheduled", "Pending Document", "rgt review", "Pending Workshop", "In Progress"]
         new_status = incoming_status if incoming_status in allowed_manual else "Auto"
 
         # --- Status date stamping logic ---
@@ -322,11 +350,10 @@ async def update_tech_idr(touchpoint_id: int, request: Request):
                 "Scheduled": "scheduled",
                 "In Progress": "inProgress",
                 "Pending Document": "discussionCompleted",
-                "Document Review": "documentReview",
+                "rgt review": "documentReview",
                 "Completed": "completed",
             }
-            
-                                    
+                                        
             # Ordered steps for backfilling
             ordered_keys = ["scheduled", "rgtShared", "inProgress", "discussionCompleted", "documentReview", "completed"]
             
@@ -447,6 +474,7 @@ async def update_tech_idr(touchpoint_id: int, request: Request):
         return {"status": "error", "message": str(e)}
     finally:
         db.close()
+
 @app.post("/api/phase2/trigger-invites")
 def trigger_manual_invites(project_id: int = Body(..., embed=True)):
     """Manually triggers workshop invite emails for tomorrow's scheduled
@@ -526,7 +554,7 @@ def get_single_touchpoint(tp_id: int):
         integration_type = tech.integration_type if tech and tech.integration_type else "unassigned"
 
         # Auto-calculate effective status (same logic as dashboard)
-        manual_statuses = ["Completed", "Rescheduled", "Pending Document", "Document Review", "In Progress"]
+        manual_statuses = ["Completed", "Rescheduled", "Pending Document", "rgt review", "In Progress"]
         effective_status = tech_status
         if tech_status not in manual_statuses:
             if tech and tech.start_date and tech.end_date:

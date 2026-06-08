@@ -157,14 +157,14 @@
                             <p id="ws-step4-info" class="text-[10px] text-slate-400 mt-0.5">Not started</p>
                         </div>
                     </div>
-                    <!-- Step 5: Document Review -->
+                    <!-- Step 5: rgt review -->
                     <div class="flex gap-3">
                         <div class="flex flex-col items-center">
                             <div id="ws-dot-5" class="w-3 h-3 rounded-full bg-slate-300 flex-shrink-0 mt-0.5"></div>
                             <div class="w-0.5 h-full bg-slate-200 my-0.5"></div>
                         </div>
                         <div class="pb-3">
-                            <p class="text-[11px] font-bold text-[#1a233a]">Document Review</p>
+                            <p class="text-[11px] font-bold text-[#1a233a]">RGT Review</p>
                             <p id="ws-step5-info" class="text-[10px] text-slate-400 mt-0.5">Not started</p>
                         </div>
                     </div>
@@ -189,7 +189,7 @@
                             <option value="Scheduled">Scheduled</option>
                             <option value="In Progress">In Progress</option>
                             <option value="Pending Document">Pending Document</option>
-                            <option value="Document Review">Document Review</option>
+                            <option value="RGT Review">RGT Review</option>
                             <option value="Completed">Completed</option>
                             <option value="Delayed">Delayed</option>
                             <option value="Rescheduled">Rescheduled</option>
@@ -264,6 +264,10 @@
                             <div><label class="text-[10px] font-bold text-slate-400 uppercase mb-1.5 block">Module Owner</label><p id="fd-val-mod-owner" class="text-sm font-medium text-slate-800">-</p><p id="fd-val-mod-owner-dept" class="text-[10px] text-indigo-500 font-medium mt-0.5"></p></div>
                             <div class="lg:col-span-3"><label class="text-[10px] font-bold text-slate-400 uppercase mb-1.5 block">Business Flow</label><p id="fd-val-flow" class="text-sm text-slate-700 leading-relaxed">-</p></div>
                             <div class="lg:col-span-3"><label class="text-[10px] font-bold text-slate-400 uppercase mb-1.5 block">Fallback</label><p id="fd-val-fallback" class="text-sm font-medium text-slate-600">-</p></div>
+                            <div>
+                                <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">Source System</label>
+                                <input type="text" id="fd-source-system" disabled class="w-full text-sm border-0 border-b-2 border-slate-200 focus:border-[#006b8f] focus:ring-0 bg-transparent px-0 py-1 transition-colors disabled:border-transparent disabled:text-slate-800 disabled:bg-transparent">
+                            </div>
                         </div>
                     </div>
                 </div>

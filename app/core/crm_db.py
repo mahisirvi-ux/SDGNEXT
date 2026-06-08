@@ -34,7 +34,7 @@ def _ensure_oracle_thick_mode():
         import oracledb
         instant_client_dir = os.environ.get(
             "ORACLE_INSTANT_CLIENT",
-            r"D:\oracle_instantclient\instantclient_23_4",
+            r"C:\Users\GautamHawdiya\Downloads\instantclient-basic-windows.x64-23.26.2.0.0\instantclient_23_0",
         )
         oracledb.init_oracle_client(lib_dir=instant_client_dir)
         print(f"[crm_db] Oracle thick mode initialized ({instant_client_dir}).")
