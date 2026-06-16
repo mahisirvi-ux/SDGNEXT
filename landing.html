@@ -101,6 +101,76 @@
                 </div>
             </div>
         </div>
+        
+        <div id="crm-config-modal" class="fixed inset-0 bg-slate-900/50 hidden items-center justify-center z-50 backdrop-blur-sm">
+            <div class="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col max-h-[90vh]">
+                <div class="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                    <div>
+                        <h3 class="font-bold text-slate-800">CRM Database Configuration</h3>
+                        <p class="text-xs text-slate-500 mt-0.5">Set connection details for this specific project.</p>
+                    </div>
+                    <button onclick="closeCrmConfigModal()" class="text-slate-400 hover:text-slate-600 transition-colors">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                    </button>
+                </div>
+
+                <div class="p-6 overflow-y-auto text-sm">
+                    <div id="crm-config-error" class="hidden mb-4 p-3 bg-red-50 text-red-700 text-xs rounded-md border border-red-100 font-medium"></div>
+                    <div id="crm-config-success" class="hidden mb-4 p-3 bg-emerald-50 text-emerald-700 text-xs rounded-md border border-emerald-100 font-medium"></div>
+
+                    <div class="space-y-4 text-left text-slate-800">
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 mb-1">Database Type</label>
+                            <select id="crm-db-type" onchange="toggleDbFields()" class="w-full border border-slate-200 rounded-md px-3 py-2">
+                                <option value="oracle">Oracle</option>
+                                <option value="sqlserver">SQL Server</option>
+                                <option value="postgres">PostgreSQL</option>
+                            </select>
+                        </div>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label id="lbl-db-host" class="block text-xs font-bold text-slate-700 mb-1">Host / IP</label>
+                                <input type="text" id="crm-db-host" class="w-full border border-slate-200 rounded-md px-3 py-2">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-slate-700 mb-1">Port</label>
+                                <input type="number" id="crm-db-port" placeholder="1521" class="w-full border border-slate-200 rounded-md px-3 py-2">
+                            </div>
+                        </div>
+                        
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label id="lbl-db-service" class="block text-xs font-bold text-slate-700 mb-1">Service Name</label>
+                                <input type="text" id="crm-db-service" class="w-full border border-slate-200 rounded-md px-3 py-2">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-slate-700 mb-1">Schema (Optional)</label>
+                                <input type="text" id="crm-db-schema" placeholder="dbo, public, etc." class="w-full border border-slate-200 rounded-md px-3 py-2">
+                            </div>
+                        </div>
+
+                        <div id="sql-driver-container" class="hidden">
+                            <label class="block text-xs font-bold text-slate-700 mb-1">ODBC Driver</label>
+                            <input type="text" id="crm-db-driver" value="ODBC Driver 17 for SQL Server" class="w-full border border-slate-200 rounded-md px-3 py-2 bg-slate-50">
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-4">
+                            <div><label class="block text-xs font-bold text-slate-700 mb-1">Username / Login</label><input type="text" id="crm-db-user" class="w-full border border-slate-200 rounded-md px-3 py-2"></div>
+                            <div><label class="block text-xs font-bold text-slate-700 mb-1">Password</label><input type="password" id="crm-db-pass" placeholder="••••••••" class="w-full border border-slate-200 rounded-md px-3 py-2"></div>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 mb-1">Owner ID</label>
+                            <input type="number" id="crm-db-owner" value="914" class="w-full border border-slate-200 rounded-md px-3 py-2">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="px-6 py-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-3">
+                    <button onclick="closeCrmConfigModal()" class="px-4 py-2 text-sm font-semibold text-slate-600 hover:text-slate-800">Cancel</button>
+                    <button id="crm-save-btn" onclick="saveCrmConfig()" class="px-5 py-2 text-sm font-semibold text-white bg-[#006b8f] rounded-lg shadow-sm">Test & Save</button>
+                </div>
+            </div>
+        </div>
 
     <script src="/js/landing.js?v=4"></script>
 </body>

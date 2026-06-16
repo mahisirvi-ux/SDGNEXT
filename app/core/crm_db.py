@@ -124,16 +124,24 @@ def get_project_short_name(config: dict) -> str:
 def get_crm_schema(db_type: str, config: dict) -> str:
     """Return the schema prefix for use in SQL (e.g. 'dbo', 'public', 'MY_SCHEMA').
 
-    Defaults per DB type when not explicitly set:
-      Oracle      → '' (Oracle uses the user as implicit schema)
-      SQL Server  → 'dbo'
-      PostgreSQL  → 'public'
+    Defaults per DB type when not explicitly set.
+    For Oracle, we default to the 'user' because our SQL strings use 
+    f"{schema}.TABLENAME". If schema is empty, it results in ".TABLENAME" 
+    which causes ORA-00903.
     """
     schema = (config.get("schema") or "").strip()
     if schema:
         return schema
-    return {DB_TYPE_ORACLE: "", DB_TYPE_SQLSERVER: "dbo", DB_TYPE_POSTGRES: "public"}.get(db_type, "dbo")
-
+        
+    # If the user left 'schema' blank in the UI, provide the safe default
+    if db_type == DB_TYPE_ORACLE:
+        return (config.get("user") or "").strip()
+    elif db_type == DB_TYPE_SQLSERVER:
+        return "dbo"
+    elif db_type == DB_TYPE_POSTGRES:
+        return "public"
+        
+    return "dbo"
 
 # ---------------------------------------------------------------------------
 # DIALECT HELPERS — used by crm.py

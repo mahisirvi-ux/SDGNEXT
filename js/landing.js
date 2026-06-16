@@ -220,6 +220,8 @@ function closeDrilldown() {
     renderPage();
 }
 
+
+
 // ==========================================
 // DRILLDOWN RENDERERS
 // ==========================================
@@ -309,8 +311,19 @@ function renderDrilldown(projectId, d) {
         <button onclick="closeDrilldown()" class="absolute top-5 right-5" style="color: var(--text-meta);" aria-label="Close drilldown">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
         </button>
-        <h3 class="text-lg font-semibold mb-1" style="color: var(--text-primary);">${escapeHtml(d.admin.project_name)}</h3>
-        <p class="text-xs mb-6" style="color: var(--text-secondary);">Project drilldown</p>
+        
+        <div class="flex justify-between items-start mb-6">
+            <div>
+                <h3 class="text-lg font-semibold mb-1" style="color: var(--text-primary);">${escapeHtml(d.admin.project_name)}</h3>
+                <p class="text-xs" style="color: var(--text-secondary);">Project drilldown</p>
+            </div>
+            
+            <div class="mr-8"> <button onclick="openCrmConfigModal(${projectId})" class="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors z-10 relative">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"></path></svg>
+                    Configure CRM DB
+                </button>
+            </div>
+        </div>
 
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
             ${renderAdminSection(d.admin)}
@@ -318,7 +331,7 @@ function renderDrilldown(projectId, d) {
             ${renderActivitySection(d.recent_activity)}
         </div>
 
-                <div class="mt-8 pt-6" style="border-top: 1px solid var(--border-subtle);">
+        <div class="mt-8 pt-6" style="border-top: 1px solid var(--border-subtle);">
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 ${stepCard(
                     'Departments',
@@ -346,9 +359,8 @@ function renderDrilldown(projectId, d) {
                 )}
             </div>
 
-            <!-- Upload status message -->
             <div id="dd-upload-status-${projectId}" class="hidden mt-3 text-[11px] font-medium px-3 py-2 rounded-lg border"></div>
-        </div>
+        </div>  
 
         <div class="mt-6 flex justify-end">
             <a href="/project?id=${projectId}" class="text-xs font-semibold px-5 py-2.5 rounded-lg shadow-sm inline-flex items-center gap-2 transition-all" style="background: var(--shell); color: white;">
@@ -357,6 +369,151 @@ function renderDrilldown(projectId, d) {
             </a>
         </div>
     </div>`;
+}
+
+let configProjectId = null;
+
+async function openCrmConfigModal(projectId) {
+    configProjectId = projectId;
+    
+    document.getElementById('crm-config-error').classList.add('hidden');
+    document.getElementById('crm-config-success').classList.add('hidden');
+    
+    try {
+        const response = await fetch(`/api/projects/${projectId}/crm-config`);
+        const data = await response.json();
+        
+        document.getElementById('crm-db-type').value = data.crm_db_type || 'oracle';
+        
+        const config = data.crm_db_config || {};
+        document.getElementById('crm-db-host').value = config.host || '';
+        document.getElementById('crm-db-port').value = config.port || '';
+        document.getElementById('crm-db-service').value = config.service || config.database || '';
+        document.getElementById('crm-db-schema').value = config.schema || '';
+        document.getElementById('crm-db-user').value = config.user || '';
+        document.getElementById('crm-db-owner').value = config.owner_id || '914';
+        document.getElementById('crm-db-pass').value = ''; 
+        
+        if (data.using_env_fallback) {
+            const errBox = document.getElementById('crm-config-error');
+            errBox.textContent = "Currently using default .env configuration. Save new details below to override for this project.";
+            errBox.classList.remove('hidden', 'bg-red-50', 'text-red-700', 'border-red-100');
+            errBox.classList.add('bg-blue-50', 'text-blue-700', 'border-blue-100');
+        }
+
+        const modal = document.getElementById('crm-config-modal');
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+        
+    } catch (err) {
+        alert("Failed to load CRM Config: " + err.message);
+    }
+}
+
+function toggleDbFields() {
+    const dbType = document.getElementById('crm-db-type').value;
+    const lblHost = document.getElementById('lbl-db-host');
+    const lblService = document.getElementById('lbl-db-service');
+    const portInput = document.getElementById('crm-db-port');
+    const driverContainer = document.getElementById('sql-driver-container');
+
+    if (dbType === 'oracle') {
+        lblHost.innerText = 'Host / IP';
+        lblService.innerText = 'Service Name';
+        portInput.placeholder = '1521';
+        driverContainer.classList.add('hidden');
+    } else if (dbType === 'sqlserver') {
+        lblHost.innerText = 'Server Name';
+        lblService.innerText = 'Database Name';
+        portInput.placeholder = '1433';
+        driverContainer.classList.remove('hidden');
+    } else if (dbType === 'postgres') {
+        lblHost.innerText = 'Host / IP';
+        lblService.innerText = 'Database Name';
+        portInput.placeholder = '5432';
+        driverContainer.classList.add('hidden');
+    }
+}
+
+function closeCrmConfigModal() {
+    const modal = document.getElementById('crm-config-modal');
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+}
+
+async function saveCrmConfig() {
+    if (!configProjectId) return;
+    
+    const btn = document.getElementById('crm-save-btn');
+    const errBox = document.getElementById('crm-config-error');
+    const succBox = document.getElementById('crm-config-success');
+    
+    btn.disabled = true;
+    btn.innerHTML = "Testing...";
+    errBox.classList.add('hidden');
+    succBox.classList.add('hidden');
+    
+    // (Replace this section inside saveCrmConfig)
+    const dbType = document.getElementById('crm-db-type').value;
+    const isOracle = dbType === 'oracle';
+    const isSqlServer = dbType === 'sqlserver';
+    
+    const configPayload = {
+        host: document.getElementById('crm-db-host').value.trim(),
+        port: parseInt(document.getElementById('crm-db-port').value) || (isOracle ? 1521 : 1433),
+        user: document.getElementById('crm-db-user').value.trim(),
+        schema: document.getElementById('crm-db-schema').value.trim(),
+        owner_id: parseInt(document.getElementById('crm-db-owner').value) || 914
+    };
+    
+    const serviceName = document.getElementById('crm-db-service').value.trim();
+    if (isOracle) {
+        configPayload.service = serviceName;
+    } else {
+        configPayload.database = serviceName; // Postgres & SQL Server use "database"
+    }
+
+    if (isSqlServer) {
+        configPayload.driver = document.getElementById('crm-db-driver').value.trim();
+    }
+    
+    const pass = document.getElementById('crm-db-pass').value;
+    if (pass) configPayload.password = pass;
+    // (Continue with the fetch call...)
+
+    try {
+        const response = await fetch(`/api/projects/${configProjectId}/crm-config`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                crm_db_type: dbType,
+                crm_db_config: configPayload
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok) {
+            errBox.classList.remove('bg-blue-50', 'text-blue-700', 'border-blue-100');
+            errBox.classList.add('bg-red-50', 'text-red-700', 'border-red-100');
+            
+            succBox.textContent = "✅ Success! CRM connection tested and saved.";
+            succBox.classList.remove('hidden');
+            
+            setTimeout(closeCrmConfigModal, 2000);
+        } else {
+            throw new Error(result.detail || "Failed to connect to database.");
+        }
+        
+    } catch (err) {
+        errBox.classList.remove('bg-blue-50', 'text-blue-700', 'border-blue-100');
+        errBox.classList.add('bg-red-50', 'text-red-700', 'border-red-100');
+        errBox.textContent = "❌ " + err.message;
+        errBox.classList.remove('hidden');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = "Test & Save";
+    }
 }
 
 function renderAdminSection(a) {
