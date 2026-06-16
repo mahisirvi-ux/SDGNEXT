@@ -330,7 +330,7 @@ async def update_tech_idr(touchpoint_id: int, request: Request):
         
         # Accept manual status overrides for workflow-controlled statuses
         incoming_status = data.get("status", "Auto")
-        allowed_manual = ["Completed", "Rescheduled", "Pending Document", "rgt review", "Pending Workshop", "In Progress"]
+        allowed_manual = ["Completed", "Rescheduled", "Pending Document", "RGT Review" ,"rgt review", "Pending Workshop", "In Progress"]
         new_status = incoming_status if incoming_status in allowed_manual else "Auto"
 
         # --- Status date stamping logic ---
@@ -350,6 +350,7 @@ async def update_tech_idr(touchpoint_id: int, request: Request):
                 "Scheduled": "scheduled",
                 "In Progress": "inProgress",
                 "Pending Document": "discussionCompleted",
+                "RGT Review": "documentReview",
                 "rgt review": "documentReview",
                 "Completed": "completed",
             }
@@ -554,7 +555,7 @@ def get_single_touchpoint(tp_id: int):
         integration_type = tech.integration_type if tech and tech.integration_type else "unassigned"
 
         # Auto-calculate effective status (same logic as dashboard)
-        manual_statuses = ["Completed", "Rescheduled", "Pending Document", "rgt review", "In Progress"]
+        manual_statuses = ["Completed", "Rescheduled", "Pending Document", "RGT Review", "rgt review", "In Progress"]
         effective_status = tech_status
         if tech_status not in manual_statuses:
             if tech and tech.start_date and tech.end_date:

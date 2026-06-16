@@ -410,7 +410,7 @@ function determineWorkshopStage(tp) {
     // 6. Completed (manual post rgt review)
 
     if (techStatus === 'completed') return 6;
-    if (techStatus === 'wud generation') return 5; // New status
+    if (techStatus === 'wud completed') return 5; // New status
     if (techStatus === 'rgt review') return 4;     // Renamed status
     if (techStatus === 'pending document') return 3;
     if (techStatus === 'in progress') return 2;
@@ -436,12 +436,18 @@ function updateWorkshopTimeline(stage, tp) {
     const fmtDate = (label, d) => d ? `${label} \u00B7 ${d}` : label;
 
     const steps = [
-        { dot: 'ws-dot-1', info: 'ws-step1-info', doneText: fmtDate('Scheduled', scheduledDate) },
-        { dot: 'ws-dot-2', info: 'ws-step2-info', doneText: fmtDate('RGT Shared', rgtSharedDate) },
-        { dot: 'ws-dot-3', info: 'ws-step3-info', doneText: fmtDate('In Progress', inProgressDate) },
-        { dot: 'ws-dot-4', info: 'ws-step4-info', doneText: fmtDate('Discussion Completed', discussionDate) },
-        { dot: 'ws-dot-5', info: 'ws-step5-info', doneText: fmtDate('Document Received', docReviewDate) },
-        { dot: 'ws-dot-6', info: 'ws-step6-info', doneText: fmtDate('Completed', completedDate) },
+        { dot: 'ws-dot-1', info: 'ws-step1-info', doneText: fmtDate('Workshop Scheduled', scheduledDate) }, // 0
+        { dot: 'ws-dot-2', info: 'ws-step2-info', doneText: fmtDate('RGT Shared', rgtSharedDate) }, // 1
+        { dot: 'ws-dot-3', info: 'ws-step3-info', doneText: fmtDate('In Progress', inProgressDate) }, // 2
+        
+        // FIXED LABEL: Changed from 'Discussion Completed' to 'Pending Document'
+        { dot: 'ws-dot-4', info: 'ws-step4-info', doneText: fmtDate('Pending Document', discussionDate) }, // 3
+        
+        // FIXED LABEL: Changed from 'Document Received' to 'RGT Review'
+        { dot: 'ws-dot-5', info: 'ws-step5-info', doneText: fmtDate('RGT Review', docReviewDate) }, // 4 
+        
+        { dot: 'ws-dot-6', info: 'ws-step6-info', doneText: fmtDate('WUD Completed', statusDates.wudGeneration || '') }, // 5
+        { dot: 'ws-dot-7', info: 'ws-step7-info', doneText: fmtDate('Completed', completedDate) }, // 6
     ];
 
         steps.forEach((step, idx) => {

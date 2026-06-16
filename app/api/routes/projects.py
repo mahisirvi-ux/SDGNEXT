@@ -322,7 +322,8 @@ def get_project_drilldown(project_id: int, db: Session = Depends(get_db)):
             "created_at": project.created_at.isoformat() if project.created_at else None,
             "touchpoint_count": tp_count,
             "department_count": dept_count,
-            "team_member_count": team_count
+            "team_member_count": team_count,
+            "has_crm_config": True if project.crm_db_config else False
         },
         "health": {
             "open_followups": open_fus,

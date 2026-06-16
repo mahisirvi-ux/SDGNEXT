@@ -229,83 +229,77 @@ function closeDrilldown() {
 function renderDrilldown(projectId, d) {
     const hasDepts = (d.admin.department_count || 0) > 0;
     const hasTeam  = (d.admin.team_member_count || 0) > 0;
+    
+    // Check if the database has been configured
+    const hasDb = d.admin.has_crm_config ? true : false;
 
     // Step states
     const step1Done = hasDepts;
     const step2Done = hasTeam;
-    // step3 (touchpoints) is always available once the other two are done — but upload is always enabled once project exists
 
-        // Unique dropdown key per step per project
-        const stepCard = (title, dropKey, inputId, locked, done, manualFn) => {
-            const doneBadge = done
-                ? `<span class="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
-                     <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>Done
-                   </span>`
-                : (locked
-                    ? `<span class="text-[10px] font-bold text-slate-400 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-full">Locked</span>`
-                    : `<span class="text-[10px] font-bold text-amber-600 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">Pending</span>`);
+    // Unique dropdown key per step per project
+    const stepCard = (title, dropKey, inputId, locked, done, manualFn) => {
+        const doneBadge = done
+            ? `<span class="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                 <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>Done
+               </span>`
+            : (locked
+                ? `<span class="text-[10px] font-bold text-slate-400 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-full">Locked</span>`
+                : `<span class="text-[10px] font-bold text-amber-600 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">Pending</span>`);
 
-            const wrapperBg  = done    ? 'border-emerald-200 bg-emerald-50'
-                             : locked  ? 'border-slate-200 bg-slate-100 opacity-50'
-                             :           'bg-[#1a233a] border-[#1a233a]';
-            const textColor  = done    ? 'text-emerald-700'
-                             : locked  ? 'text-slate-400'
-                             :           'text-white';
-            const caretColor = done    ? 'text-emerald-500'
-                             : locked  ? 'text-slate-300'
-                             :           'text-white/70';
+        const wrapperBg  = done    ? 'border-emerald-200 bg-emerald-50'
+                         : locked  ? 'border-slate-200 bg-slate-100 opacity-50'
+                         :           'bg-[#1a233a] border-[#1a233a]';
+        const textColor  = done    ? 'text-emerald-700'
+                         : locked  ? 'text-slate-400'
+                         :           'text-white';
+        const caretColor = done    ? 'text-emerald-500'
+                         : locked  ? 'text-slate-300'
+                         :           'text-white/70';
 
-            const disabledPointer = locked ? 'pointer-events-none' : '';
+        const disabledPointer = locked ? 'pointer-events-none' : '';
 
-            return `
-            <div class="relative ${disabledPointer}" id="dd-wrap-${dropKey}">
-                <!-- Main button row -->
-                <div class="w-full flex items-center rounded-lg border overflow-hidden ${wrapperBg}">
-                    <!-- Label area -->
-                    <div class="flex-1 flex items-center justify-between gap-2 px-4 py-3">
-                        <span class="text-sm font-semibold ${textColor}">${title}</span>
-                        ${doneBadge}
+        return `
+        <div class="relative ${disabledPointer}" id="dd-wrap-${dropKey}">
+            <div class="w-full flex items-center rounded-lg border overflow-hidden ${wrapperBg}">
+                <div class="flex-1 flex items-center justify-between gap-2 px-4 py-3">
+                    <span class="text-sm font-semibold ${textColor}">${title}</span>
+                    ${doneBadge}
+                </div>
+                <div class="w-px self-stretch ${done ? 'bg-emerald-200' : (locked ? 'bg-slate-200' : 'bg-white/20')}"></div>
+                <button type="button"
+                    onclick="toggleStepDropdown('dd-menu-${dropKey}', 'dd-caret-${dropKey}')"
+                    class="px-3 py-3 flex items-center justify-center transition-colors ${done ? 'hover:bg-emerald-100' : 'hover:bg-white/10'}"
+                    title="More options">
+                    <svg id="dd-caret-${dropKey}" class="w-4 h-4 transition-transform ${caretColor}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                    </svg>
+                </button>
+            </div>
+
+            <div id="dd-menu-${dropKey}" class="hidden absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg z-30 overflow-hidden">
+                <button type="button"
+                    onclick="if(!${hasDb}) { alert('⚠️ Please provide CRM Database details by clicking Configure CRM DB first.'); return false; } document.getElementById('${inputId}').click(); toggleStepDropdown('dd-menu-${dropKey}', 'dd-caret-${dropKey}')"
+                    class="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-slate-50 transition-colors border-b border-slate-100">
+                    <div class="w-7 h-7 rounded-md bg-[#1a233a] flex items-center justify-center flex-shrink-0">
+                        <svg class="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
                     </div>
-                    <!-- Divider -->
-                    <div class="w-px self-stretch ${done ? 'bg-emerald-200' : (locked ? 'bg-slate-200' : 'bg-white/20')}"></div>
-                    <!-- Caret toggle -->
-                    <button type="button"
-                        onclick="toggleStepDropdown('dd-menu-${dropKey}', 'dd-caret-${dropKey}')"
-                        class="px-3 py-3 flex items-center justify-center transition-colors ${done ? 'hover:bg-emerald-100' : 'hover:bg-white/10'}"
-                        title="More options">
-                        <svg id="dd-caret-${dropKey}" class="w-4 h-4 transition-transform ${caretColor}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
-                        </svg>
-                    </button>
-                </div>
+                    <span class="text-xs font-semibold text-[#1a233a]">Upload CSV</span>
+                </button>
+                <button type="button"
+                    onclick="if(!${hasDb}) { alert('⚠️ Please provide CRM Database details by clicking Configure CRM DB first.'); return false; } ${manualFn}; toggleStepDropdown('dd-menu-${dropKey}', 'dd-caret-${dropKey}')"
+                    class="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-slate-50 transition-colors">
+                    <div class="w-7 h-7 rounded-md bg-slate-100 flex items-center justify-center flex-shrink-0">
+                        <svg class="w-3.5 h-3.5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                    </div>
+                    <span class="text-xs font-semibold text-slate-700">Add Manually</span>
+                </button>
+            </div>
 
-                <!-- Dropdown menu -->
-                <div id="dd-menu-${dropKey}" class="hidden absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg z-30 overflow-hidden">
-                    <!-- Upload CSV -->
-                    <button type="button"
-                        onclick="document.getElementById('${inputId}').click(); toggleStepDropdown('dd-menu-${dropKey}', 'dd-caret-${dropKey}')"
-                        class="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-slate-50 transition-colors border-b border-slate-100">
-                        <div class="w-7 h-7 rounded-md bg-[#1a233a] flex items-center justify-center flex-shrink-0">
-                            <svg class="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
-                        </div>
-                        <span class="text-xs font-semibold text-[#1a233a]">Upload CSV</span>
-                    </button>
-                    <!-- Add Manually -->
-                    <button type="button"
-                        onclick="${manualFn}; toggleStepDropdown('dd-menu-${dropKey}', 'dd-caret-${dropKey}')"
-                        class="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-slate-50 transition-colors">
-                        <div class="w-7 h-7 rounded-md bg-slate-100 flex items-center justify-center flex-shrink-0">
-                            <svg class="w-3.5 h-3.5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
-                        </div>
-                        <span class="text-xs font-semibold text-slate-700">Add Manually</span>
-                    </button>
-                </div>
-
-                <!-- Hidden file input -->
-                <input type="file" id="${inputId}" class="hidden" accept=".csv"
-                    onchange="handleDrilldownUpload(event, ${projectId}, '${dropKey.split('-')[0]}')"/>
-            </div>`;
-        };
+            <input type="file" id="${inputId}" class="hidden" accept=".csv"
+                onchange="handleDrilldownUpload(event, ${projectId}, '${dropKey.split('-')[0]}')"/>
+        </div>`;
+    };
 
     return `<div class="bg-white rounded-xl border p-7 relative" style="border-color: var(--border-default); box-shadow: 0 1px 3px rgba(0,0,0,0.03);">
         <button onclick="closeDrilldown()" class="absolute top-5 right-5" style="color: var(--text-meta);" aria-label="Close drilldown">
@@ -318,7 +312,8 @@ function renderDrilldown(projectId, d) {
                 <p class="text-xs" style="color: var(--text-secondary);">Project drilldown</p>
             </div>
             
-            <div class="mr-8"> <button onclick="openCrmConfigModal(${projectId})" class="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors z-10 relative">
+            <div class="mr-8"> 
+                <button onclick="openCrmConfigModal(${projectId})" class="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors z-10 relative">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"></path></svg>
                     Configure CRM DB
                 </button>
@@ -363,7 +358,7 @@ function renderDrilldown(projectId, d) {
         </div>  
 
         <div class="mt-6 flex justify-end">
-            <a href="/project?id=${projectId}" class="text-xs font-semibold px-5 py-2.5 rounded-lg shadow-sm inline-flex items-center gap-2 transition-all" style="background: var(--shell); color: white;">
+            <a href="#" onclick="if(!${hasDb}) { alert('⚠️ Please provide CRM Database details by clicking Configure CRM DB first.'); return false; } window.location.href='/project?id=${projectId}';" class="text-xs font-semibold px-5 py-2.5 rounded-lg shadow-sm inline-flex items-center gap-2 transition-all" style="background: var(--shell); color: white;">
                 Open Project
                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3"/></svg>
             </a>
