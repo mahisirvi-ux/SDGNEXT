@@ -712,29 +712,3 @@ window.downloadMigrationTemplate = function() {
     }
     window.open(`/admin/migration-template/${projectSelector.value}`, '_blank');
 };
-
-// ==========================================
-// MANAGE IDENTITIES DROPDOWN
-// ==========================================
-window.toggleIdentitiesMenu = function(event) {
-    event.stopPropagation();
-    const menu = document.getElementById('manage-identities-menu');
-    const caret = document.getElementById('manage-identities-caret');
-    if (menu) menu.classList.toggle('hidden');
-    if (caret) caret.classList.toggle('rotate-180');
-};
-
-window.closeIdentitiesMenu = function() {
-    const menu = document.getElementById('manage-identities-menu');
-    const caret = document.getElementById('manage-identities-caret');
-    if (menu) menu.classList.add('hidden');
-    if (caret) caret.classList.remove('rotate-180');
-};
-
-// Close identities menu on click outside
-document.addEventListener('click', (e) => {
-    const wrapper = document.getElementById('manage-identities-wrapper');
-    if (wrapper && !wrapper.contains(e.target)) {
-        closeIdentitiesMenu();
-    }
-});

@@ -302,23 +302,47 @@ function renderDrilldown(projectId, d) {
     };
 
     return `<div class="bg-white rounded-xl border p-7 relative" style="border-color: var(--border-default); box-shadow: 0 1px 3px rgba(0,0,0,0.03);">
-        <button onclick="closeDrilldown()" class="absolute top-5 right-5" style="color: var(--text-meta);" aria-label="Close drilldown">
+        <button onclick="closeDrilldown()" class="absolute top-5 right-5 z-20" style="color: var(--text-meta);" aria-label="Close drilldown">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
         </button>
         
-        <div class="flex justify-between items-start mb-6">
-            <div>
+        <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6 pr-8">
+            <div class="flex-shrink-0">
                 <h3 class="text-lg font-semibold mb-1" style="color: var(--text-primary);">${escapeHtml(d.admin.project_name)}</h3>
                 <p class="text-xs" style="color: var(--text-secondary);">Project drilldown</p>
             </div>
             
-            <div class="mr-8"> 
-                <button onclick="openCrmConfigModal(${projectId})" class="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors z-10 relative">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"></path></svg>
-                    Configure CRM DB
-                </button>
+            <div class="w-full lg:w-auto relative z-10">
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    ${stepCard(
+                        'Departments',
+                        'departments-' + projectId,
+                        'dd-depts-input-' + projectId,
+                        false,
+                        step1Done,
+                        `openManualModal('departments', ${projectId})`
+                    )}
+                    ${stepCard(
+                        'Team Members',
+                        'team-' + projectId,
+                        'dd-team-input-' + projectId,
+                        !step1Done,
+                        step2Done,
+                        `openManualModal('team', ${projectId})`
+                    )}
+                    ${stepCard(
+                        'Touchpoints',
+                        'touchpoints-' + projectId,
+                        'dd-tp-input-' + projectId,
+                        !step2Done,
+                        false,
+                        `openManualModal('touchpoints', ${projectId})`
+                    )}
+                </div>
             </div>
         </div>
+
+        <div id="dd-upload-status-${projectId}" class="hidden mb-6 text-[11px] font-medium px-3 py-2 rounded-lg border"></div>
 
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
             ${renderAdminSection(d.admin)}
@@ -326,39 +350,8 @@ function renderDrilldown(projectId, d) {
             ${renderActivitySection(d.recent_activity)}
         </div>
 
-        <div class="mt-8 pt-6" style="border-top: 1px solid var(--border-subtle);">
-            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                ${stepCard(
-                    'Departments',
-                    'departments-' + projectId,
-                    'dd-depts-input-' + projectId,
-                    false,
-                    step1Done,
-                    `openManualModal('departments', ${projectId})`
-                )}
-                ${stepCard(
-                    'Team Members',
-                    'team-' + projectId,
-                    'dd-team-input-' + projectId,
-                    !step1Done,
-                    step2Done,
-                    `openManualModal('team', ${projectId})`
-                )}
-                ${stepCard(
-                    'Touchpoints',
-                    'touchpoints-' + projectId,
-                    'dd-tp-input-' + projectId,
-                    !step2Done,
-                    false,
-                    `openManualModal('touchpoints', ${projectId})`
-                )}
-            </div>
-
-            <div id="dd-upload-status-${projectId}" class="hidden mt-3 text-[11px] font-medium px-3 py-2 rounded-lg border"></div>
-        </div>  
-
-        <div class="mt-6 flex justify-end">
-            <a href="#" onclick="if(!${hasDb}) { alert('⚠️ Please provide CRM Database details by clicking Configure CRM DB first.'); return false; } window.location.href='/project?id=${projectId}';" class="text-xs font-semibold px-5 py-2.5 rounded-lg shadow-sm inline-flex items-center gap-2 transition-all" style="background: var(--shell); color: white;">
+        <div class="mt-8 pt-6 flex justify-end" style="border-top: 1px solid var(--border-subtle);">
+            <a href="#" onclick="if(!${hasDb}) { alert('⚠️ Please provide CRM Database details by clicking Configure CRM DB first.'); return false; } window.location.href='/project?id=${projectId}';" class="text-xs font-semibold px-5 py-2.5 rounded-lg shadow-sm inline-flex items-center gap-2 transition-all opacity-90 hover:opacity-100" style="background: var(--shell); color: white;">
                 Open Project
                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3"/></svg>
             </a>
@@ -994,6 +987,18 @@ function openNewProjectModal() {
     document.getElementById('new-project-name').value = '';
     document.getElementById('new-project-error').classList.add('hidden');
     document.getElementById('new-project-modal').classList.remove('hidden');
+    
+    // Reset button text just in case it was stuck from a previous error
+    const btn = document.getElementById('btn-submit-new-project');
+    if(btn) {
+        btn.disabled = false;
+        btn.innerHTML = "Create Project & Save DB";
+    }
+
+    // Set initial database labels based on the dropdown
+    if (typeof toggleDbFields === 'function') toggleDbFields();
+
+    // Auto-focus the project name input
     setTimeout(() => document.getElementById('new-project-name').focus(), 100);
 }
 
@@ -1005,6 +1010,7 @@ async function submitNewProject() {
     const input = document.getElementById('new-project-name');
     const name = input.value.trim();
     const errorEl = document.getElementById('new-project-error');
+    const btn = document.getElementById('btn-submit-new-project');
 
     if (!name) {
         errorEl.textContent = 'Project name is required.';
@@ -1013,32 +1019,86 @@ async function submitNewProject() {
         return;
     }
 
+    btn.disabled = true;
+    btn.innerHTML = "Creating Project...";
+    errorEl.classList.add('hidden');
+
     try {
+        // Step 1: Create the Project
         const res = await fetch('/projects', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({project_name: name})
         });
 
-        if (res.status === 201 || res.ok) {
-            closeNewProjectModal();
-            landingState.drilldownCache = {};
-            loadLanding();
-        } else {
+        if (!res.ok && res.status !== 201) {
             const err = await res.json();
-            errorEl.textContent = err.detail || 'Failed to create project.';
-            errorEl.classList.remove('hidden');
-            input.focus();
+            throw new Error(err.detail || 'Failed to create project.');
         }
+
+        const projectData = await res.json();
+        const newProjectId = projectData.id;
+
+        btn.innerHTML = "Testing & Saving DB...";
+
+        // Step 2: Gather DB Details from the UI
+        const dbType = document.getElementById('crm-db-type').value;
+        const isOracle = dbType === 'oracle';
+        const isSqlServer = dbType === 'sqlserver';
+        
+        const configPayload = {
+            host: document.getElementById('crm-db-host').value.trim(),
+            port: parseInt(document.getElementById('crm-db-port').value) || (isOracle ? 1521 : 1433),
+            user: document.getElementById('crm-db-user').value.trim(),
+            schema: document.getElementById('crm-db-schema').value.trim(),
+            owner_id: parseInt(document.getElementById('crm-db-owner').value) || 914
+        };
+        
+        const serviceName = document.getElementById('crm-db-service').value.trim();
+        if (isOracle) { configPayload.service = serviceName; } 
+        else { configPayload.database = serviceName; }
+
+        if (isSqlServer) { configPayload.driver = document.getElementById('crm-db-driver').value.trim(); }
+        
+        const pass = document.getElementById('crm-db-pass').value;
+        if (pass) configPayload.password = pass;
+
+        // Step 3: Save the DB config to the new project
+        const configResp = await fetch(`/api/projects/${newProjectId}/crm-config`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                crm_db_type: dbType,
+                crm_db_config: configPayload
+            })
+        });
+
+        if (!configResp.ok) {
+            const errBody = await configResp.text();
+            throw new Error("Project created, but Database details failed to connect.");
+        }
+
+        // Success! Smoothly close modal and reload dashboard data without full page refresh
+        closeNewProjectModal();
+        landingState.drilldownCache = {};
+        loadLanding();
+
     } catch (err) {
-        errorEl.textContent = 'Network error.';
+        errorEl.textContent = '❌ ' + err.message;
         errorEl.classList.remove('hidden');
+        btn.disabled = false;
+        btn.innerHTML = "Create Project & Save DB";
     }
 }
 
 document.addEventListener('keydown', (e) => {
     const modal = document.getElementById('new-project-modal');
     if (!modal || modal.classList.contains('hidden')) return;
-    if (e.key === 'Enter') submitNewProject();
+    
+    // Prevent hitting enter from triggering submit if they are inside a text input (optional UX choice)
+    if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA') {
+        e.preventDefault(); 
+        submitNewProject();
+    }
     if (e.key === 'Escape') closeNewProjectModal();
 });

@@ -10,7 +10,7 @@ from io import BytesIO
 from apscheduler.schedulers.background import BackgroundScheduler
 from contextlib import asynccontextmanager
 from app.core.database import engine, Base, SessionLocal, get_db
-from app.models.domain import TeamMaster, DepartmentMaster
+from app.models.domain import TeamMaster, DepartmentMaster, IDRTechnical, IDRActionLog
 from app.services.identity_validator import enrich_owner_label
 from app.core.mom_engine import generate_and_send_mom
 from app.core.ai_agent import get_active_provider, set_active_provider
@@ -214,7 +214,7 @@ def get_phase2_dashboard(request: Request):
             tech_status = tech.tech_status if tech and tech.tech_status else "Auto"
 
                         # Preserve manually set statuses
-            manual_statuses = ["Completed", "Rescheduled", "Pending Document", "rgt review", "In Progress"]
+            manual_statuses = ["Completed", "Rescheduled", "Pending Document", "rgt review", "In Progress", "WUD Completed"]
             
             if tech_status in manual_statuses:
                 pass  # Keep as-is
@@ -330,7 +330,7 @@ async def update_tech_idr(touchpoint_id: int, request: Request):
         
         # Accept manual status overrides for workflow-controlled statuses
         incoming_status = data.get("status", "Auto")
-        allowed_manual = ["Completed", "Rescheduled", "Pending Document", "RGT Review" ,"rgt review", "Pending Workshop", "In Progress"]
+        allowed_manual = ["Completed", "Rescheduled", "Pending Document", "RGT Review" ,"rgt review", "Pending Workshop", "In Progress", "WUD Completed"]
         new_status = incoming_status if incoming_status in allowed_manual else "Auto"
 
         # --- Status date stamping logic ---
@@ -555,7 +555,8 @@ def get_single_touchpoint(tp_id: int):
         integration_type = tech.integration_type if tech and tech.integration_type else "unassigned"
 
         # Auto-calculate effective status (same logic as dashboard)
-        manual_statuses = ["Completed", "Rescheduled", "Pending Document", "RGT Review", "rgt review", "In Progress"]
+        manual_statuses = ["Completed", "Rescheduled", "Pending Document", "RGT Review", "rgt review", "In Progress",
+                           "WUD Completed"]
         effective_status = tech_status
         if tech_status not in manual_statuses:
             if tech and tech.start_date and tech.end_date:
@@ -667,7 +668,7 @@ def get_single_touchpoint(tp_id: int):
     finally:
         db.close()
 @app.get("/api/phase2/touchpoint/{tp_id}/generate-wud")
-def generate_wud_word_endpoint(tp_id: int):
+def generate_wud_word_endpoint(tp_id: int, db: Session = Depends(get_db)):
     """Generates a Word Work Unit Document and returns it."""
     
     data_response = get_single_touchpoint(tp_id)
@@ -684,6 +685,21 @@ def generate_wud_word_endpoint(tp_id: int):
         word_file = create_wud_word(tp_data)
         safe_name = tp_data.get("name", "Touchpoint").replace(" ", "_")
 
+        # --- NEW AUTOMATION: Auto-advance to WUD Completed ---
+        tech_record = db.query(IDRTechnical).filter(IDRTechnical.touchpoint_id == tp_id).first()
+        if tech_record and tech_record.tech_status != "WUD Completed":
+            old_status = tech_record.tech_status
+            tech_record.tech_status = "WUD Completed"
+            
+            db.add(IDRActionLog(
+                touchpoint_id=tp_id,
+                action_type="STATUS_CHANGE",
+                action_by="System",
+                comment=f"Status: {old_status} -> WUD Completed upon WUD document generation."
+            ))
+            db.commit()
+        # -----------------------------------------------------
+
         # Stream the file with the exact MIME type for .docx
         return StreamingResponse(
             word_file,
@@ -692,6 +708,8 @@ def generate_wud_word_endpoint(tp_id: int):
         )
     except Exception as e:
         print(f"Backend Word Generation Error: {e}")
+        if 'db' in locals():
+            db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 
 
