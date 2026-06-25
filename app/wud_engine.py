@@ -155,6 +155,7 @@ def create_wud_word(touchpoint_data: dict) -> BytesIO:
     else:
         input_request_text = str(td.get('apiReq') or 'Not provided')
         output_response_text = str(td.get('apiRes') or 'Not provided')
+        error_response_text = str(td.get('errorSample') or 'Not provided')
 
     # ==========================================
     # LIVE AWS BEDROCK AI CALL
@@ -166,6 +167,7 @@ def create_wud_word(touchpoint_data: dict) -> BytesIO:
         business_flow=str(business_flow_text), 
         input_req=input_request_text, 
         output_res=output_response_text,
+        error_res = error_response_text,
         integration_type=integration_type
     )
     
@@ -456,7 +458,7 @@ def create_wud_word(touchpoint_data: dict) -> BytesIO:
             ("Firewall / IPs", str(td.get('dbFirewall') or 'N/A')),
             ("Input Data", input_request_text),
             ("Output Data", output_response_text),
-            ("Failure Response", "If database exception occurs it will log and display respective error messages."),
+            ("Failure Response", error_response_text),
             ("Expected Output", str(ai_content.get('expected_output') or 'NA')), 
             ("Macro Logic", str(ai_content.get('macro_logic') or 'NA')),
             ("Testing Strategy", "Database connections and SP logic will be tested as part of functional scenario testing."),
@@ -476,7 +478,7 @@ def create_wud_word(touchpoint_data: dict) -> BytesIO:
             ("EDS Name", api_name),
             ("Input Request Payload", td.get('apiReq', 'NA')),
             ("Output Response Payload", td.get('apiRes', 'NA')),
-            ("Failure Response", "If Invalid Response is passed it will display respective error messages in response."),
+            ("Failure Response", td.get('errorSample', 'NA')),
             ("Expected Output", ai_content.get('expected_output', 'NA')), 
             ("Macro Logic", ai_content.get('macro_logic', 'NA')),
             ("Testing Strategy", "EDS will be tested as a part of functional scenario testing.\nExplicit testing can be performed through the Widget."),

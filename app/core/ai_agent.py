@@ -251,7 +251,7 @@ def generate_project_mom(project_data: str) -> str:
         return "<p>Error generating MOM. Please review the dashboard manually.</p>"
 
 
-def generate_wud_content(api_name: str, module_name: str, crm_location: str, business_flow: str, input_req: str, output_res: str, integration_type: str = "api") -> dict:
+def generate_wud_content(api_name: str, module_name: str, crm_location: str, business_flow: str, input_req: str, output_res: str, error_res: str, integration_type: str = "api") -> dict:
     """Generates formal Introduction, Macro Logic, and Expected Output for the WUD."""
     
     # Fallback if OpenAI is offline
@@ -289,7 +289,7 @@ def generate_wud_content(api_name: str, module_name: str, crm_location: str, bus
     Do not include markdown code blocks (like ```json). Return ONLY the raw, valid JSON object.
         """
 
-    user_prompt = f"API Name: {api_name}\nModule: {module_name}\nTrigger Location in CRM: {crm_location}\nBusiness Flow / Objective: {business_flow}\n\nInput Details:\n{input_req}\n\nOutput Details:\n{output_res}"
+    user_prompt = f"API Name: {api_name}\nModule: {module_name}\nTrigger Location in CRM: {crm_location}\nBusiness Flow / Objective: {business_flow}\n\nInput Details:\n{input_req}\n\nOutput Details:\n{output_res}\n\nError Details:\n{error_res}"
 
     try:
         response_text = _invoke_llm(system_prompt, user_prompt, temperature=0.2)
