@@ -382,40 +382,44 @@ async function generateWUD() {
         a.click();
         window.URL.revokeObjectURL(url);
         a.remove();
+        
+        // --- NEW AUTOMATION: Instantly refresh the page upon successful download! ---
+        window.location.reload();
+        // ---------------------------------------------------------------------------
+        
     } catch (err) {
         console.error(err);
         alert("Network error generating document.");
-    } finally {
         btn.innerHTML = originalHTML;
         btn.disabled = false;
         btn.classList.remove('opacity-75');
-    }
+    } 
+    // Removed the "finally" block reset because the page is reloading anyway!
 }
 
 // ==========================================
 // WORKSHOP TIMELINE
 // ==========================================
 function determineWorkshopStage(tp) {
-    const techStatus = (tp.techStatus || "").toLowerCase();
+    const rawStatus = tp.techStatus || tp.tech_status || "";
+    const techStatus = rawStatus.toLowerCase().trim();
+    
     const td = tp.techDetails || {};
     const hasSchedule = tp.start && tp.start !== "-" && tp.start !== "None" && tp.start.trim() !== "";
     const rgtShared = !!td.rgtSharedAt;
 
-    // 6-step flow:
-    // 1. Workshop Scheduled
-    // 2. RGT Shared
-    // 3. In Progress (start_date <= today)
-    // 4. Discussion Completed (manual: Pending Document status)
-    // 5. rgt review (bank replied with filled RGT)
-    // 6. Completed (manual post rgt review)
+    console.log("🛠️ DEBUG - Raw Status from DB:", rawStatus);
+    console.log("🛠️ DEBUG - Cleaned Status:", techStatus);
 
-    if (techStatus === 'completed') return 6;
-    if (techStatus === 'wud completed') return 5; // New status
-    if (techStatus === 'rgt review') return 4;     // Renamed status
-    if (techStatus === 'pending document') return 3;
-    if (techStatus === 'in progress') return 2;
-    if (rgtShared) return 1;
-    if (hasSchedule) return 0;
+    // Shifted all returns up by 1 to match the 1-7 stepNum calculation!
+    if (techStatus === 'completed') return 7;
+    if (techStatus === 'wud completed' || techStatus === 'wud generation') return 6; 
+    if (techStatus === 'rgt review') return 5;
+    if (techStatus === 'pending document') return 4;
+    if (techStatus === 'in progress') return 3;
+    if (rgtShared) return 2;
+    if (hasSchedule) return 1;
+    
     return 0;
 }
 

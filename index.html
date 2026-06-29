@@ -29,17 +29,16 @@
         </nav>
     </aside>
 
-    <main class="flex-1 flex flex-col h-screen overflow-hidden relative">
-        
-                <header class="bg-shell px-6 py-4 flex justify-between items-center z-10">
-                        <div class="flex items-center">
+    <main class="flex-1 flex flex-col h-screen overflow-hidden relative">  
+        <header class="bg-shell px-6 py-4 flex justify-between items-center z-10">
+            <div class="flex items-center">
                 <a href="/" class="hover:opacity-80 transition-opacity" title="Back to home">
                     <h1 class="text-lg font-bold tracking-tight text-white">SDG<span class="text-pink-400">NEXT</span></h1>
                 </a>
             </div>
             
             <div class="flex items-center space-x-4">
-                                <div class="flex items-center space-x-3">
+                <div class="flex items-center space-x-3">
                     <span class="text-[10px] font-bold text-shell-muted uppercase tracking-wider">Project:</span>
                     <input type="hidden" id="projectSelector" value="">
                     <span id="currentProjectName" class="text-xs font-semibold text-white bg-white/10 px-3 py-1.5 rounded-full border border-white/20">Loading...</span>
@@ -53,66 +52,15 @@
                     <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
                     Email Report
                 </button>
+
                 <button onclick="downloadReport()" class="cursor-pointer bg-white/10 hover:bg-white/20 text-white border border-white/20 text-[11px] font-bold py-2 px-3 rounded-lg transition-all inline-flex items-center gap-2 whitespace-nowrap">
                     <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
                     Export CSV
                 </button>
-                <!-- Manage Identities (replaces the legacy "Manage Teams" single button) -->
-                <div class="relative" id="manage-identities-wrapper">
-                    <button type="button" id="manage-identities-btn" onclick="toggleIdentitiesMenu(event)" class="cursor-pointer bg-white/10 hover:bg-white/20 text-white border border-white/20 text-[11px] font-bold py-2 px-3 rounded-lg transition-all inline-flex items-center gap-2 whitespace-nowrap">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
-                        Identities
-                        <svg id="manage-identities-caret" class="w-3 h-3 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
-                    </button>
 
-                    <div id="manage-identities-menu" class="hidden absolute right-0 mt-2 w-80 bg-white border border-slate-200 rounded-xl shadow-xl z-40 overflow-hidden">
-                        <div class="px-4 py-2.5 bg-slate-50 border-b border-slate-100">
-                            <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Identity Master Data</p>
-                        </div>
-
-                        <button type="button" onclick="document.getElementById('departmentsCsvInput').click(); closeIdentitiesMenu();" class="w-full flex items-start gap-3 px-4 py-3 hover:bg-slate-50 transition-colors text-left border-b border-slate-100">
-                            <div class="w-8 h-8 rounded-md bg-indigo-50 text-indigo-600 flex items-center justify-center flex-shrink-0 mt-0.5">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path></svg>
-                            </div>
-                            <div class="flex-1">
-                                <p class="text-sm font-semibold text-[#1a233a]">Upload Departments</p>
-                                <p class="text-xs text-slate-500 mt-0.5">CSV: Dept ID · Name · Email · Is CRM</p>
-                            </div>
-                        </button>
-
-                        <button type="button" onclick="document.getElementById('teamMembersCsvInput').click(); closeIdentitiesMenu();" class="w-full flex items-start gap-3 px-4 py-3 hover:bg-slate-50 transition-colors text-left border-b border-slate-100">
-                            <div class="w-8 h-8 rounded-md bg-blue-50 text-blue-600 flex items-center justify-center flex-shrink-0 mt-0.5">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
-                            </div>
-                            <div class="flex-1">
-                                <p class="text-sm font-semibold text-[#1a233a]">Upload Team Members</p>
-                                <p class="text-xs text-slate-500 mt-0.5">CSV: Name · Email · Phone · Dept ID</p>
-                            </div>
-                        </button>
-
-                        <a href="#" onclick="downloadMigrationTemplate(); closeIdentitiesMenu(); return false;" class="w-full flex items-start gap-3 px-4 py-3 hover:bg-slate-50 transition-colors text-left">
-                            <div class="w-8 h-8 rounded-md bg-emerald-50 text-emerald-600 flex items-center justify-center flex-shrink-0 mt-0.5">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
-                            </div>
-                            <div class="flex-1">
-                                <p class="text-sm font-semibold text-[#1a233a]">Download Migration Template</p>
-                                <p class="text-xs text-slate-500 mt-0.5">All legacy names → fill in dept/email, re-upload</p>
-                            </div>
-                        </a>
-                    </div>
-                </div>
-
-                                <label class="cursor-pointer bg-primary hover:bg-primary-hover text-white text-[11px] font-bold py-2 px-3 rounded-lg shadow transition-all inline-flex items-center gap-2 whitespace-nowrap">
-                    <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
-                    Upload Touchpoints
-                    <input type="file" id="csvFileInput" accept=".csv" class="hidden">
-                    <input type="file" id="teamLovInput" class="hidden" accept=".csv">
-                </label>
-
-                <!-- Hidden file inputs driven by the Manage Identities menu above -->
+                <input type="file" id="csvFileInput" class="hidden" accept=".csv">
                 <input type="file" id="departmentsCsvInput" class="hidden" accept=".csv">
                 <input type="file" id="teamMembersCsvInput" class="hidden" accept=".csv">
-                <!-- Kept for backward compat with any older JS still listening on it; not exposed via UI. -->
                 <input type="file" id="teamLovInput" class="hidden" accept=".csv">
             </div>
         </header>
@@ -318,6 +266,6 @@
     <script type="module" src="/js/app-dashboard.js?v=35"></script>
     
     <!-- 2. THE NEW PHASE 2 & NAVIGATION SCRIPT -->
-    <script src="js/phase2_technical.js?v=37"></script>
+    <script src="js/phase2_technical.js?v=30"></script>
 </body>
 </html>

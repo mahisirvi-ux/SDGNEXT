@@ -69,15 +69,78 @@
     </main>
 
     <!-- New Project Modal -->
-    <div id="new-project-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-        <!-- Modal sizes: sm=400, md=520, lg=700. See ui-tokens.md. -->
-        <div class="bg-white rounded-xl shadow-2xl w-[400px] p-6">
-            <h3 class="text-sm font-bold text-[#1a233a] mb-4">Create New Project</h3>
-            <input type="text" id="new-project-name" class="w-full text-sm p-3 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-200" placeholder="Project name" autofocus>
-            <p id="new-project-error" class="text-xs text-red-500 mt-1 hidden"></p>
-            <div class="flex justify-end gap-2 mt-4">
-                <button onclick="closeNewProjectModal()" class="text-[11px] font-bold text-slate-500 px-4 py-2 rounded-lg border border-slate-200">Cancel</button>
-                <button onclick="submitNewProject()" class="text-[11px] font-bold text-white bg-primary hover:bg-primary-hover px-4 py-2 rounded-lg shadow">Create</button>
+    <div id="new-project-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
+            <div class="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                <div>
+                    <h3 class="font-bold text-slate-800 text-lg">Create New Project</h3>
+                    <p class="text-xs text-slate-500 mt-0.5">Setup project space and database connectivity.</p>
+                </div>
+                <button onclick="closeNewProjectModal()" class="text-slate-400 hover:text-slate-600 transition-colors">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            </div>
+
+            <div class="p-6 overflow-y-auto text-sm space-y-6">
+                <div id="new-project-error" class="hidden p-3 bg-red-50 text-red-700 text-xs rounded-md border border-red-100 font-medium"></div>
+
+                <div>
+                    <label class="block text-xs font-bold text-slate-700 mb-1">Project Name <span class="text-red-500">*</span></label>
+                    <input type="text" id="new-project-name" placeholder="e.g., SBI Digital Lending" class="w-full border border-slate-200 rounded-md px-3 py-2 text-base font-semibold focus:ring-2 focus:ring-[#1a233a]">
+                </div>
+
+                <div class="border-t border-slate-100 pt-5 space-y-4">
+                    <h4 class="font-bold text-slate-800">CRM Database Details</h4>
+                    
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 mb-1">Database Type</label>
+                        <select id="crm-db-type" onchange="toggleDbFields()" class="w-full border border-slate-200 rounded-md px-3 py-2">
+                            <option value="oracle">Oracle</option>
+                            <option value="sqlserver">SQL Server</option>
+                            <option value="postgres">PostgreSQL</option>
+                        </select>
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label id="lbl-db-host" class="block text-xs font-bold text-slate-700 mb-1">Host / IP</label>
+                            <input type="text" id="crm-db-host" class="w-full border border-slate-200 rounded-md px-3 py-2">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 mb-1">Port</label>
+                            <input type="number" id="crm-db-port" placeholder="1521" class="w-full border border-slate-200 rounded-md px-3 py-2">
+                        </div>
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label id="lbl-db-service" class="block text-xs font-bold text-slate-700 mb-1">Service Name</label>
+                            <input type="text" id="crm-db-service" class="w-full border border-slate-200 rounded-md px-3 py-2">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 mb-1">Schema (Optional)</label>
+                            <input type="text" id="crm-db-schema" placeholder="dbo, public, etc." class="w-full border border-slate-200 rounded-md px-3 py-2">
+                        </div>
+                    </div>
+
+                    <div id="sql-driver-container" class="hidden">
+                        <label class="block text-xs font-bold text-slate-700 mb-1">ODBC Driver</label>
+                        <input type="text" id="crm-db-driver" value="ODBC Driver 17 for SQL Server" class="w-full border border-slate-200 rounded-md px-3 py-2 bg-slate-50">
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <div><label class="block text-xs font-bold text-slate-700 mb-1">Username</label><input type="text" id="crm-db-user" class="w-full border border-slate-200 rounded-md px-3 py-2"></div>
+                        <div><label class="block text-xs font-bold text-slate-700 mb-1">Password</label><input type="password" id="crm-db-pass" placeholder="••••••••" class="w-full border border-slate-200 rounded-md px-3 py-2"></div>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 mb-1">Owner ID</label>
+                        <input type="number" id="crm-db-owner" value="914" class="w-full border border-slate-200 rounded-md px-3 py-2">
+                    </div>
+                </div>
+            </div>
+
+            <div class="px-6 py-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-3">
+                <button onclick="closeNewProjectModal()" class="px-4 py-2 text-sm font-semibold text-slate-600 hover:text-slate-800 transition-colors">Cancel</button>
+                <button id="btn-submit-new-project" onclick="submitNewProject()" class="px-5 py-2 text-sm font-semibold text-white bg-[#1a233a] rounded-lg shadow-sm hover:bg-slate-800 transition-colors">Create Project & Save DB</button>
             </div>
         </div>
     </div>
